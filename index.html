@@ -2,10 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>AI ラジオ体操採点システム [PCデスクトップ版]</title>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
-
+    <title>介助動作セルフチェックシステム [GitHub Video Edition]</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -17,220 +14,177 @@
             flex-direction: column;
             align-items: center;
         }
-        .app-container {
+        .container {
             width: 100%;
             max-width: 1100px;
             background-color: #1e293b;
             border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            padding: 25px;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.5);
         }
         h1 {
-            color: #38bdf8;
             font-size: 18pt;
-            border-bottom: 2px solid #0284c7;
-            padding-bottom: 8px;
+            color: #38bdf8;
             margin-top: 0;
+            border-bottom: 2px solid #0284c7;
+            padding-bottom: 10px;
         }
-        .view-grid {
+        .video-split-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
             margin-bottom: 20px;
         }
-        .video-box {
+        .video-card {
             background-color: #020617;
             border-radius: 8px;
-            padding: 10px;
-            position: relative;
-            text-align: center;
-        }
-        video, canvas {
-            background-color: #000;
-            border-radius: 4px;
-            max-width: 100%;
-            height: auto;
-        }
-        .hidden-video {
-            display: none;
-        }
-        .dashboard {
-            background-color: #0f172a;
-            border-radius: 8px;
             padding: 15px;
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
+            text-align: center;
             border: 1px solid #334155;
         }
-        .score-circle {
-            width: 100px;
-            height: 100px;
-            border-radius: 50%;
-            background: radial-gradient(#0284c7, #0369a1);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            font-size: 22pt;
-            font-weight: bold;
-            box-shadow: 0 0 15px #38bdf8;
+        video {
+            width: 100%;
+            max-width: 480px;
+            height: 320px;
+            background-color: #050510;
+            border-radius: 6px;
+            border: 1px solid #475569;
+            object-fit: cover;
         }
-        .feedback-box {
-            flex-count: 1;
-            margin-left: 20px;
+        .task-list-panel {
+            background-color: #0f172a;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #38bdf8;
+            margin-bottom: 20px;
+        }
+        .task-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #1e293b;
             font-size: 11pt;
-            color: #38bdf8;
+        }
+        .task-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 15px;
+            cursor: pointer;
+        }
+        .task-title {
             font-weight: bold;
+            color: #cbd5e1;
+            flex-grow: 1;
+        }
+        .task-tip {
+            font-size: 9.5pt;
+            color: #38bdf8;
+            background-color: #0c4a6e;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .btn-action {
+            background-color: #0284c7;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 11pt;
+            transition: background-color 0.2s;
+        }
+        .btn-action:hover {
+            background-color: #0369a1;
+        }
+        .summary-box {
+            font-size: 12pt;
+            font-weight: bold;
+            color: #4ade80;
+            margin-top: 15px;
+            text-align: right;
         }
     </style>
 </head>
 <body>
 
-<div class="app-container">
-    <h1>AI ラジオ体操採点・比較エミュレータ</h1>
-    
-    <div class="view-grid">
-        <div class="video-box">
-            <h3 style="margin-top:0; color:#cbd5e1;">① あなたの体操（リアルタイム解析）</h3>
-            <video id="inputVideo" class="hidden-video" width="480" height="360" autoplay playsinline></video>
-            <canvas id="outputCanvas" width="480" height="360"></canvas>
+    <div class="container">
+        <h1>介助動作セルフチェックシステム (Plan C)</h1>
+        <div style="font-size: 10pt; color: #94a3b8; margin-bottom: 20px;">
+            移乗介助動作のセルフ評価プロトタイプ：左の教育動画と右の自身の動作を比較し，工程ごとの達成度を自ら確認します．
         </div>
-        
-        <div class="video-box">
-            <h3 style="margin-top:0; color:#cbd5e1;">② お手本・講師のフォーム（目標チャンク）</h3>
-            <canvas id="teacherCanvas" width="480" height="360"></canvas>
+
+        <div class="video-split-grid">
+            <div class="video-card">
+                <h3 style="margin-top:0; color:#4ade80;">【左】お手本教育動画（目標基準）</h3>
+                <video id="eduVideo" src="videos/edu_assist.mp4" controls autoplay loop muted playsinline></video>
+                <div style="margin-top: 10px; font-size: 9.5pt; color: #94a3b8;">
+                    ※今年度改訂予定の移乗介助マスター動画
+                </div>
+            </div>
+
+            <div class="video-card">
+                <h3 style="margin-top:0; color:#38bdf8;">【右】あなたの介助動作（検証用動画）</h3>
+                <video id="userCam" autoplay playsinline muted></video>
+                <div style="margin-top: 10px; font-size: 9.5pt; color: #94a3b8;">
+                    ※iPadの内蔵フロントカメラ映像がリアルタイム投影されます
+                </div>
+            </div>
+        </div>
+
+        <div class="task-list-panel">
+            <h3 style="margin-top:0; color:#cbd5e1;">移乗介助・工程別セルフチェック項目</h3>
+            
+            <div class="task-item">
+                <input type="checkbox" id="chk1" onchange="updateProgress()">
+                <div class="task-title">工程1: 被介助者との距離を十分に詰め，密着できているか</div>
+                <div class="task-tip">コツ: モーメントアームを最小化し，腰椎への負担を減らします</div>
+            </div>
+
+            <div class="task-item">
+                <input type="checkbox" id="chk2" onchange="updateProgress()">
+                <div class="task-title">工程2: 骨盤を後傾させ，体幹をできるだけ直立に保っているか</div>
+                <div class="task-tip">コツ: 腰を曲げるのではなく，股関節と膝関節を深く曲げます</div>
+            </div>
+
+            <div class="task-item">
+                <input type="checkbox" id="chk3" onchange="updateProgress()">
+                <div class="task-title">工程3: 声かけを行い，被介助者の重心移動と同期して抱え上げているか</div>
+                <div class="task-tip">コツ: 突発的なパニック動作（外乱入力）による労災を防ぎます</div>
+            </div>
+
+            <div class="summary-box" id="progressStatus">
+                現在の達成工程: 0 / 3 (0%)
+            </div>
+        </div>
+
+        <div style="text-align: center;">
+            <button class="btn-action" onclick="alert('セルフチェック結果を画面に保持しました．（プランBへ拡張時はここにデータ保存APIを接続）')">チェック完了</button>
         </div>
     </div>
 
-    <div class="dashboard">
-        <div>
-            <span style="font-size: 10pt; color: #94a3b8; display:block; text-align:center; margin-bottom:5px;">REALTIME SCORE</span>
-            <div class="score-circle" id="scoreValue">85</div>
-        </div>
-        <div class="feedback-box" id="feedbackText">
-            [AIフィジカル評価]: 両腕を外側へ大きく広げ，胸椎の伸展を意識してください．
-        </div>
-    </div>
-</div>
-
-<script>
-    const videoElement = document.getElementById('inputVideo');
-    const canvasElement = document.getElementById('outputCanvas');
-    const canvasCtx = canvasElement.getContext('2d');
-    
-    const teacherCanvas = document.getElementById('teacherCanvas');
-    const teacherCtx = teacherCanvas.getContext('2d');
-
-    let globalFrameCount = 0;
-
-    // 1. お手本（講師）のダミー時空間運動軌道の生成 (ラジオ体操第一：腕を振る運動のシミュレート)
-    function drawTeacherSkeleton(frame) {
-        teacherCtx.clearRect(0, 0, teacherCanvas.width, teacherCanvas.height);
-        const t = (frame / 50) * Math.PI * 2;
-        
-        const cx = 240, cy = 180;
-        // 体幹リンク
-        teacherCtx.strokeStyle = '#22c55e'; // お手本はグリーン
-        teacherCtx.lineWidth = 6;
-        teacherCtx.beginPath();
-        teacherCtx.moveTo(cx, cy - 60);
-        teacherCtx.lineTo(cx, cy + 60);
-        teacherCtx.stroke();
-
-        // 腕の動き（綺麗なサイン波で大きく振る）
-        const armX = Math.sin(t) * 80;
-        const armY = -Math.abs(document.getElementById('scoreValue').innerText > 50 ? Math.cos(t)*40 : 20);
-
-        teacherCtx.strokeStyle = '#4ade80';
-        teacherCtx.beginPath();
-        // 左腕
-        teacherCtx.moveTo(cx, cy - 50);
-        teacherCtx.lineTo(cx - 60 - armX, cy - 20 + armY);
-        // 右腕
-        teacherCtx.moveTo(cx, cy - 50);
-        teacherCtx.lineTo(cx + 60 + armX, cy - 20 + armY);
-        teacherCtx.stroke();
-    }
-
-    // 2. MediaPipe Poseのコールバック関数（ユーザー骨格の処理とリアルタイム採点）
-    function onPoseResults(results) {
-        canvasCtx.save();
-        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-        
-        // カメラ映像を背後に描画
-        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-
-        globalFrameCount++;
-        drawTeacherSkeleton(globalFrameCount);
-
-        if (results.poseLandmarks) {
-            canvasCtx.fillStyle = '#38bdf8';
-            canvasCtx.strokeStyle = '#0284c7';
-            canvasCtx.lineWidth = 4;
-
-            // 簡易的に肩と肘，手首を抽出して描画 (ラジオ体操用にバインド)
-            const leftShoulder = results.poseLandmarks[11];
-            const rightShoulder = results.poseLandmarks[12];
-            const leftElbow = results.poseLandmarks[13];
-            const rightElbow = results.poseLandmarks[14];
-
-            // 骨格リンクの描画
-            if(leftShoulder && rightShoulder && leftElbow && rightElbow) {
-                canvasCtx.beginPath();
-                canvasCtx.moveTo(leftShoulder.x * canvasElement.width, leftShoulder.y * canvasElement.height);
-                canvasCtx.lineTo(leftElbow.x * canvasElement.width, leftElbow.y * canvasElement.height);
-                canvasCtx.moveTo(rightShoulder.x * canvasElement.width, rightShoulder.y * canvasElement.height);
-                canvasCtx.lineTo(rightElbow.x * canvasElement.width, rightElbow.y * canvasElement.height);
-                canvasCtx.stroke();
-                
-                // 3. 採点エンジンのエミュレーション (お手本軌道との幾何学的相関計算)
-                const userAmplitude = Math.abs(leftElbow.x - rightElbow.x);
-                const idealAmplitude = 0.5 + Math.abs(Math.sin((globalFrameCount / 50) * Math.PI * 2)) * 0.2;
-                
-                // 誤差からスコアを逆算
-                const error = Math.abs(userAmplitude - idealAmplitude);
-                let currentScore = Math.max(0, Math.min(100, Math.floor(100 - error * 150)));
-                
-                document.getElementById('scoreValue').innerText = currentScore;
-
-                // スコアに応じたリアルタイムフィードバックの分岐
-                if (currentScore > 85) {
-                    document.getElementById('feedbackText').innerText = "[AI評価]: Excellent! お手本と同調しています．その調子で筋肉を伸ばしましょう．";
-                    document.getElementById('feedbackText').style.color = "#4ade80";
-                } else if (currentScore > 60) {
-                    document.getElementById('feedbackText').innerText = "[AI評価]: Good．もう少し腕を水平まで高く上げると，肩甲骨周りの運動効果が高まります．";
-                    document.getElementById('feedbackText').style.color = "#38bdf8";
-                } else {
-                    document.getElementById('feedbackText').innerText = "[AI評価]: 動きが小さくなっています．ラジオ体操の音楽のテンポに合わせて，ダイナミックに身体を動かしてください．";
-                    document.getElementById('feedbackText').style.color = "#f43f5e";
-                }
-            }
+    <script>
+        // --- 1. 右側のiPadカメラの起動 ---
+        const video = document.getElementById('userCam');
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+            .then(function(stream) {
+                video.srcObject = stream;
+                video.play();
+            })
+            .catch(function(error) {
+                console.log("カメラの起動に失敗しました: ", error);
+            });
         }
-        canvasCtx.restore();
-    }
 
-    // 4. MediaPipeの初期化とカメラの起動
-    const pose = new Pose({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-    });
-    
-    pose.setOptions({
-        modelComplexity: 1,
-        smoothLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-    });
-    pose.onResults(onPoseResults);
-
-    const camera = new Camera(videoElement, {
-        onFrame: async () => {
-            await pose.send({image: videoElement});
-        },
-        width: 480,
-        height: 360
-    });
-    camera.start();
-</script>
+        // --- 2. セルフチェックのカウント処理 ---
+        function updateProgress() {
+            const chks = [document.getElementById('chk1'), document.getElementById('chk2'), document.getElementById('chk3')];
+            const checkedCount = chks.filter(c => c.checked).length;
+            const percent = Math.floor((checkedCount / chks.length) * 100);
+            
+            document.getElementById('progressStatus').innerText = `現在の達成工程: ${checkedCount} / ${chks.length} (${percent}%)`;
+        }
+    </script>
 </body>
 </html>
