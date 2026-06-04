@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>介助動作セルフチェックシステム [GitHub Video Edition]</title>
+    <title>介助動作セルフチェック＆数理シミュレーション統合システム [Antigravity確定版]</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -29,6 +29,30 @@
             border-bottom: 2px solid #0284c7;
             padding-bottom: 10px;
         }
+        .system-switcher {
+            background-color: #0c4a6e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #0284c7;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .system-switcher label {
+            font-weight: bold;
+            font-size: 11pt;
+            color: #f0fdf4;
+        }
+        .system-switcher select {
+            padding: 8px 16px;
+            font-size: 11pt;
+            background-color: #1e293b;
+            color: white;
+            border: 1px solid #38bdf8;
+            border-radius: 4px;
+            cursor: pointer;
+        }
         .video-split-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -41,15 +65,23 @@
             padding: 15px;
             text-align: center;
             border: 1px solid #334155;
+            min-height: 380px;
         }
-        video {
+        video, canvas {
             width: 100%;
             max-width: 480px;
             height: 320px;
             background-color: #050510;
             border-radius: 6px;
             border: 1px solid #475569;
-            object-fit: cover;
+            object-fit: contain;
+        }
+        .file-input-wrapper {
+            margin-top: 10px;
+            background-color: #0f172a;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px dashed #38bdf8;
         }
         .task-list-panel {
             background-color: #0f172a;
@@ -65,126 +97,4 @@
             border-bottom: 1px solid #1e293b;
             font-size: 11pt;
         }
-        .task-item input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            margin-right: 15px;
-            cursor: pointer;
-        }
-        .task-title {
-            font-weight: bold;
-            color: #cbd5e1;
-            flex-grow: 1;
-        }
-        .task-tip {
-            font-size: 9.5pt;
-            color: #38bdf8;
-            background-color: #0c4a6e;
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-        .btn-action {
-            background-color: #0284c7;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 11pt;
-            transition: background-color 0.2s;
-        }
-        .btn-action:hover {
-            background-color: #0369a1;
-        }
-        .summary-box {
-            font-size: 12pt;
-            font-weight: bold;
-            color: #4ade80;
-            margin-top: 15px;
-            text-align: right;
-        }
-    </style>
-</head>
-<body>
-
-    <div class="container">
-        <h1>介助動作セルフチェックシステム (Plan C)</h1>
-        <div style="font-size: 10pt; color: #94a3b8; margin-bottom: 20px;">
-            移乗介助動作のセルフ評価プロトタイプ：左の教育動画と右の自身の動作を比較し，工程ごとの達成度を自ら確認します．
-        </div>
-
-        <div class="video-split-grid">
-            <div class="video-card">
-                <h3 style="margin-top:0; color:#4ade80;">【左】お手本教育動画（目標基準）</h3>
-                <video id="eduVideo" src="videos/edu_assist.mp4" controls autoplay loop muted playsinline></video>
-                <div style="margin-top: 10px; font-size: 9.5pt; color: #94a3b8;">
-                    ※今年度改訂予定の移乗介助マスター動画
-                </div>
-            </div>
-
-            <div class="video-card">
-                <h3 style="margin-top:0; color:#38bdf8;">【右】あなたの介助動作（検証用動画）</h3>
-                <video id="userCam" autoplay playsinline muted></video>
-                <div style="margin-top: 10px; font-size: 9.5pt; color: #94a3b8;">
-                    ※iPadの内蔵フロントカメラ映像がリアルタイム投影されます
-                </div>
-            </div>
-        </div>
-
-        <div class="task-list-panel">
-            <h3 style="margin-top:0; color:#cbd5e1;">移乗介助・工程別セルフチェック項目</h3>
-            
-            <div class="task-item">
-                <input type="checkbox" id="chk1" onchange="updateProgress()">
-                <div class="task-title">工程1: 被介助者との距離を十分に詰め，密着できているか</div>
-                <div class="task-tip">コツ: モーメントアームを最小化し，腰椎への負担を減らします</div>
-            </div>
-
-            <div class="task-item">
-                <input type="checkbox" id="chk2" onchange="updateProgress()">
-                <div class="task-title">工程2: 骨盤を後傾させ，体幹をできるだけ直立に保っているか</div>
-                <div class="task-tip">コツ: 腰を曲げるのではなく，股関節と膝関節を深く曲げます</div>
-            </div>
-
-            <div class="task-item">
-                <input type="checkbox" id="chk3" onchange="updateProgress()">
-                <div class="task-title">工程3: 声かけを行い，被介助者の重心移動と同期して抱え上げているか</div>
-                <div class="task-tip">コツ: 突発的なパニック動作（外乱入力）による労災を防ぎます</div>
-            </div>
-
-            <div class="summary-box" id="progressStatus">
-                現在の達成工程: 0 / 3 (0%)
-            </div>
-        </div>
-
-        <div style="text-align: center;">
-            <button class="btn-action" onclick="alert('セルフチェック結果を画面に保持しました．（プランBへ拡張時はここにデータ保存APIを接続）')">チェック完了</button>
-        </div>
-    </div>
-
-    <script>
-        // --- 1. 右側のiPadカメラの起動 ---
-        const video = document.getElementById('userCam');
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-            .then(function(stream) {
-                video.srcObject = stream;
-                video.play();
-            })
-            .catch(function(error) {
-                console.log("カメラの起動に失敗しました: ", error);
-            });
-        }
-
-        // --- 2. セルフチェックのカウント処理 ---
-        function updateProgress() {
-            const chks = [document.getElementById('chk1'), document.getElementById('chk2'), document.getElementById('chk3')];
-            const checkedCount = chks.filter(c => c.checked).length;
-            const percent = Math.floor((checkedCount / chks.length) * 100);
-            
-            document.getElementById('progressStatus').innerText = `現在の達成工程: ${checkedCount} / ${chks.length} (${percent}%)`;
-        }
-    </script>
-</body>
-</html>
+        .task-item input
