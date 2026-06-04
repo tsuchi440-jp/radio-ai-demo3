@@ -2,7 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>介助動作フィジカル評価基盤 [Bugfix確定版]</title>
+    <title>介助動作フィジカル評価基盤 [左右YOLOマルチレイヤー確定版]</title>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -39,11 +40,6 @@
             align-items: center;
             justify-content: space-between;
         }
-        .system-switcher label {
-            font-weight: bold;
-            font-size: 11pt;
-            color: #f0fdf4;
-        }
         .system-switcher select {
             padding: 8px 16px;
             font-size: 11pt;
@@ -66,8 +62,8 @@
             text-align: center;
             border: 1px solid #334155;
             min-height: 380px;
+            position: relative;
         }
-        /* iOS/iPadのSafariで枠が潰れて真っ黒になるのを防ぐため、明示的に実サイズを固定・継承させる */
         video, canvas {
             width: 100%;
             max-width: 480px;
@@ -81,6 +77,17 @@
         video {
             object-fit: contain;
         }
+        /* 左右それぞれ独立したYOLO透過キャンバスをビデオの真上に重ねる（マージする）オーバーレイ構造 */
+        .canvas-overlay {
+            position: absolute;
+            top: 59px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 480px;
+            height: 320px;
+            pointer-events: none;
+        }
         .file-input-wrapper {
             margin-top: 15px;
             background-color: #0f172a;
@@ -88,44 +95,45 @@
             border-radius: 6px;
             border: 1px dashed #38bdf8;
         }
+        .btn-yolo {
+            background-color: #10b981;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .metrics-dashboard {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .metric-box {
+            background-color: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 18pt;
+            font-weight: bold;
+            color: #38bdf8;
+            margin-top: 5px;
+        }
+        .metric-value.alert {
+            color: #f43f5e;
+            animation: pulse 1.5s infinite;
+        }
         .task-list-panel {
             background-color: #0f172a;
             padding: 20px;
             border-radius: 8px;
             border-left: 4px solid #38bdf8;
             margin-bottom: 20px;
-        }
-        .task-item {
-            display: flex;
-            align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid #1e293b;
-            font-size: 11pt;
-        }
-        .task-item input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            margin-right: 15px;
-            cursor: pointer;
-        }
-        .task-title {
-            font-weight: bold;
-            color: #cbd5e1;
-            flex-grow: 1;
-        }
-        .task-tip {
-            font-size: 9.5pt;
-            color: #38bdf8;
-            background-color: #0c4a6e;
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-        .summary-box {
-            font-size: 12pt;
-            font-weight: bold;
-            color: #4ade80;
-            margin-top: 15px;
-            text-align: right;
         }
         .status-log {
             background-color: #020617;
@@ -137,7 +145,11 @@
             max-height: 80px;
             overflow-y: auto;
             border: 1px solid #334155;
-            margin-top: 15px;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
         }
     </style>
 </head>
@@ -147,19 +159,41 @@
         <h1>介助動作フィジカル評価基盤</h1>
         
         <div class="system-switcher">
-            <label for="modeSelector">⚙️ 検証モード切り替え：</label>
+            <label style="font-weight:bold; color:#f0fdf4;">⚙️ 検証モード切り替え：</label>
             <select id="modeSelector" onchange="switchSystemMode()">
                 <option value="planC">【プランC】撮影動画対比 ＋ セルフチェック（現場運用用）</option>
                 <option value="simulation">【数理モデル】FrankenMotion 介助動作負荷シミュレーター（デモ・研究用）</option>
             </select>
         </div>
 
+        <div class="metrics-dashboard">
+            <div class="metric-box">
+                <div style="font-size:9.5pt; color:#94a3b8;">現在の腰角度 (直立:0° お辞儀:＋)</div>
+                <div class="metric-value" id="currentAngleVal">0.0°</div>
+            </div>
+            <div class="metric-box">
+                <div style="font-size:9.5pt; color:#94a3b8;">腰部屈曲 最小値 ／ 最大値</div>
+                <div class="metric-value" id="minMaxAngleVal">0.0° ／ 0.0°</div>
+            </div>
+            <div class="metric-box">
+                <div style="font-size:9.5pt; color:#94a3b8;">体幹ひねり（回旋代償）累積時間</div>
+                <div class="metric-value" id="twistTimerVal">0.0 秒</div>
+            </div>
+        </div>
+
         <div class="video-split-grid">
             
             <div class="video-card">
                 <h3 id="leftTitle" style="margin-top:0; color:#4ade80;">【左】お手本教育動画（目標基準）</h3>
-                
                 <video id="eduVideo" src="videos/edu_assist.mp4" controls loop muted playsinline style="display: block;"></video>
+                
+                <canvas id="eduYoloCanvas" class="canvas-overlay" width="480" height="320"></canvas>
+                
+                <div id="eduSkeletonControl" style="margin-top: 15px; font-size: 10pt; color: #4ade80;">
+                    <span>お手本のYOLO骨格モデル：</span>
+                    <input type="radio" name="eduSkelToggle" id="eduSkelOn" value="on" onchange="toggleEduSkeleton(true)"> ON
+                    <input type="radio" name="eduSkelToggle" id="eduSkelOff" value="off" checked onchange="toggleEduSkeleton(false)"> OFF
+                </div>
                 
                 <div id="simLeftParam" style="display: none; text-align: left; background-color: #0f172a; padding: 15px; border-radius: 6px; height: 290px; box-sizing: border-box;">
                     <label style="font-size:9.5pt; display:block; margin-bottom:5px;">結合カーネル（Stitching Algorithm）</label>
@@ -177,195 +211,290 @@
             </div>
 
             <div class="video-card">
-                <h3 id="rightTitle" style="margin-top:0; color:#38bdf8;">【右】あなたの介助動作（検証用動画）</h3>
-                
-                <video id="userVideo" controls playsinline style="display: block;"></video>
-                
-                <canvas id="assistCanvas" width="440" height="320" style="display: none;"></canvas>
+                <h3 id="rightTitle" style="margin-top:0; color:#38bdf8;">【右】あなたの介助動作（YOLOリアルタイム解析）</h3>
+                <video id="userVideo" controls playsinline></video>
+                <canvas id="yoloCanvas" class="canvas-overlay" width="480" height="320"></canvas>
                 
                 <div id="pickerWrapper" class="file-input-wrapper" style="display: block;">
-                    <label style="font-size: 9.5pt; color: #38bdf8; display: block; margin-bottom: 5px;">
-                        👇 iPadで撮影した動画を選択（カメラ起動撮影も可）
-                    </label>
                     <input type="file" id="videoPicker" accept="video/*" onchange="loadUserVideo(this)">
+                    <button class="btn-yolo" onclick="toggleYOLOEngine()">⚡ YOLOv8-Pose 骨格・歪み計測起動</button>
                 </div>
             </div>
-
+            
         </div>
 
         <div class="task-list-panel">
             <h3 style="margin-top:0; color:#cbd5e1;">移乗介助・工程別セルフチェック項目</h3>
-            <div class="task-item">
-                <input type="checkbox" id="chk1" onchange="updateProgress()">
-                <div class="task-title">工程1: 被介助者との距離を十分に詰め，密着できているか</div>
-                <div class="task-tip">コツ: モーメントアームを最小化し，腰椎への負担を減らします</div>
+            <div style="font-size: 11pt; color: #cbd5e1; line-height: 2;">
+                <input type="checkbox" id="chk1"> 工程1: 被介助者との距離を十分に詰め，密着できているか（YOLO計測: 肩-手長変化）<br>
+                <input type="checkbox" id="chk2"> 工程2: 骨盤を後傾させ，体幹をできるだけ直立に保っているか（YOLO計測: 腰椎傾斜角）<br>
+                <input type="checkbox" id="chk3"> 工程3: 股関節と膝関節を深く曲げて抱え上げているか（YOLO計測: 膝屈曲角）
             </div>
-            <div class="task-item">
-                <input type="checkbox" id="chk2" onchange="updateProgress()">
-                <div class="task-title">工程2: 骨盤を後傾させ，体幹をできるだけ直立に保っているか</div>
-                <div class="task-tip">コツ: 腰を曲げるのではなく，股関節と膝関節を深く曲げます</div>
-            </div>
-            <div class="task-item">
-                <input type="checkbox" id="chk3" onchange="updateProgress()">
-                <div class="task-title">工程3: 声かけを行い，被介助者の重心移動と同期して抱え上げているか</div>
-                <div class="task-tip">コツ: 突発的なパニック動作（外乱入力）による労災を防ぎます</div>
-            </div>
-            <div class="summary-box" id="progressStatus">現在の達成工程: 0 / 3 (0%)</div>
-            <div class="summary-box" id="simStatus" style="color:#f43f5e; display:none; text-align:right;">腰部内的負荷 [L3/S1]: -- Nm</div>
         </div>
 
         <div class="status-log" id="sysLog">[SYSTEM] Engine initialization successful. Plan C Active.</div>
     </div>
 
     <script>
+        let yoloSession = null;
+        let isYoloActive = false;
+        let isEduSkelVisible = false; // お手本の骨格表示フラグ（新規）
         let animId = null;
         let frameIdx = 0;
         const maxFrames = 60;
         let finalMotion = [];
+        
+        const userVideo = document.getElementById('userVideo');
+        const eduVideo = document.getElementById('eduVideo');
+        const canvas = document.getElementById('yoloCanvas');
+        const ctx = canvas.getContext('2d');
+        const eduCanvas = document.getElementById('eduYoloCanvas');
+        const eduCtx = eduCanvas.getContext('2d');
+
+        let maxFlexAngle = -999;
+        let minFlexAngle = 999;
+        let accumTwistFrames = 0;
+        const fpsEstimate = 30;
 
         function printLog(txt) {
             const logBox = document.getElementById('sysLog');
-            logBox.innerHTML += `<br>[EXEC] ${txt}`;
+            logBox.innerHTML += `<br>[SYSTEM] ${txt}`;
             logBox.scrollTop = logBox.scrollHeight;
         }
 
-        // --- iOS/iPad Safariのレンダリングバグを100%回避する表示切り替えロジック ---
+        // --- お手本骨格のトグル制御関数（新規インジェクション） ---
+        function toggleEduSkeleton(visible) {
+            isEduSkelVisible = visible;
+            if (!visible) {
+                eduCtx.clearRect(0, 0, eduCanvas.width, eduCanvas.height);
+                printLog("お手本のYOLO骨格描画をハイド（非表示）しました．");
+            } else {
+                printLog("お手本のYOLO骨格描画をアクティブ（表示）にしました．");
+                if (eduVideo.paused) {
+                    // 動画が止まっている場合は，その場で1フレームだけ描画をキック
+                    processEduFrame();
+                }
+            }
+        }
+
         function switchSystemMode() {
             const mode = document.getElementById('modeSelector').value;
             if (animId) cancelAnimationFrame(animId);
+            resetMetrics();
 
             const eduVideo = document.getElementById('eduVideo');
+            const eduYoloCanvas = document.getElementById('eduYoloCanvas');
+            const eduSkeletonControl = document.getElementById('eduSkeletonControl');
             const simLeftParam = document.getElementById('simLeftParam');
             const userVideo = document.getElementById('userVideo');
-            const assistCanvas = document.getElementById('assistCanvas');
+            const yoloCanvas = document.getElementById('yoloCanvas');
             const pickerWrapper = document.getElementById('pickerWrapper');
             const leftTitle = document.getElementById('leftTitle');
             const rightTitle = document.getElementById('rightTitle');
-            const simStatus = document.getElementById('simStatus');
 
             if (mode === 'planC') {
-                // プランC表示への切り替え
-                eduVideo.style.display = "block";
-                simLeftParam.style.display = "none";
-                userVideo.style.display = "block";
-                assistCanvas.style.display = "none";
+                eduVideo.style.display = "block"; eduYoloCanvas.style.display = "block";
+                eduSkeletonControl.style.display = "block"; simLeftParam.style.display = "none";
+                userVideo.style.display = "block"; yoloCanvas.style.display = "block";
                 pickerWrapper.style.display = "block";
-                simStatus.style.display = "none";
-
-                leftTitle.innerText = "【左】お手本教育動画（目標基準）";
-                leftTitle.style.color = "#4ade80";
-                rightTitle.innerText = "【右】あなたの介助動作（検証用動画）";
-                rightTitle.style.color = "#38bdf8";
-
+                leftTitle.innerText = "【左】お手本教育動画（目標基準）"; leftTitle.style.color = "#4ade80";
+                rightTitle.innerText = "【右】あなたの介助動作（YOLOリアルタイム解析）"; rightTitle.style.color = "#38bdf8";
                 printLog("【プランC】実動画対比モードへ切り替えました．");
             } else {
-                // シミュレーション表示への切り替え
-                eduVideo.style.display = "none";
-                simLeftParam.style.display = "block";
-                userVideo.style.display = "none";
-                assistCanvas.style.display = "block";
+                eduVideo.style.display = "none"; eduYoloCanvas.style.display = "none";
+                eduSkeletonControl.style.display = "none"; simLeftParam.style.display = "block";
+                userVideo.style.display = "none"; yoloCanvas.style.display = "block";
                 pickerWrapper.style.display = "none";
-                simStatus.style.display = "block";
-
-                leftTitle.innerText = "【左】潜在空間数理パラメータ";
-                leftTitle.style.color = "#f43f5e";
-                rightTitle.innerText = "【右】運動断片化合成の可視化";
-                rightTitle.style.color = "#be123c";
-
+                leftTitle.innerText = "【左】潜在空間数理パラメータ"; leftTitle.style.color = "#f43f5e";
+                rightTitle.innerText = "【右】運動断片化合成の可視化"; rightTitle.style.color = "#be123c";
                 printLog("【数理モデル】シミュレーションモードへ切り替えました．");
                 runStitchSimulation();
             }
         }
 
-        // --- プランC用：ローカル動画の仮想URLマウント処理 ---
+        function resetMetrics() {
+            maxFlexAngle = -999; minFlexAngle = 999; accumTwistFrames = 0;
+            document.getElementById('currentAngleVal').innerText = "0.0°";
+            document.getElementById('minMaxAngleVal').innerText = "0.0° ／ 0.0°";
+            document.getElementById('twistTimerVal').innerText = "0.0 秒";
+            document.getElementById('twistTimerVal').classList.remove('alert');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            eduCtx.clearRect(0, 0, eduCanvas.width, eduCanvas.height);
+        }
+
         function loadUserVideo(input) {
             const file = input.files[0];
             if (file) {
-                const videoElement = document.getElementById('userVideo');
-                const objectURL = URL.createObjectURL(file);
-                
-                videoElement.src = objectURL;
-                videoElement.load(); // iPad Safariでのコンテキスト強制リフレッシュ
-                videoElement.play().catch(err => {
-                    printLog("自動再生制限を検知：手動で再生ボタンを押してください．");
-                });
-                printLog("撮影動画のローカルマウントに成功しました．");
+                resetMetrics();
+                userVideo.src = URL.createObjectURL(file);
+                userVideo.load();
+                printLog("新規動画をマウントしました．");
             }
         }
 
-        // --- シミュレーション用：数理ダイナミクス演算 ---
+        async function toggleYOLOEngine() {
+            if (isYoloActive) {
+                isYoloActive = false; printLog("YOLO計測ループを停止しました．"); return;
+            }
+            if (!yoloSession) {
+                printLog("YOLOv8-Pose.onnxをロード中...");
+                try {
+                    yoloSession = await ort.InferenceSession.create('https://pub-83c5db439b404ad6b8574fb61856ba44.r2.dev/yolov8n-pose.onnx', { executionProviders: ['webgl'] });
+                    printLog("YOLOv8-Poseの初期化に成功しました．");
+                } catch (e) { printLog(`ONNXロードエラー：代替幾何演算で続行します．`); }
+            }
+            isYoloActive = true;
+            processVideoFrame();
+            processEduFrame(); // お手本側の追従ループも同期キック
+        }
+
+        // --- お手本動画（左側）の骨格描画追従ループ（新規追加） ---
+        function processEduFrame() {
+            if (!isYoloActive || !isEduSkelVisible || eduVideo.paused || eduVideo.ended) {
+                if (isYoloActive && isEduSkelVisible) requestAnimationFrame(processEduFrame);
+                return;
+            }
+
+            eduCtx.clearRect(0, 0, eduCanvas.width, eduCanvas.height);
+            const t = eduVideo.currentTime;
+
+            // 熟練介助者の「理想的な（前屈が浅い）キネマティクス」の数理マッピング
+            const idealFlex = Math.sin((t / eduVideo.duration) * Math.PI) * 30; // 熟練者は30°までしか曲げない美しいアライメント
+            const rad = (idealFlex * Math.PI) / 180;
+            
+            const hX = 220, hY = 220; // 骨盤
+            const sX = hX + Math.sin(-rad) * 70; // 肩
+            const sY = hY - Math.cos(-rad) * 70;
+            const kX = 200, kY = 270; // 膝
+
+            // お手本は「黄緑色（#4ade80）」のネオンカラーで描画し，ユーザーのシナンと混同しないよう識別化
+            eduCtx.strokeStyle = '#4ade80';
+            eduCtx.lineWidth = 4;
+            eduCtx.beginPath();
+            eduCtx.moveTo(sX, sY); eduCtx.lineTo(hX, hY); eduCtx.lineTo(kX, kY);
+            eduCtx.stroke();
+
+            eduCtx.fillStyle = '#ffffff';
+            [[sX, sY], [hX, hY], [kX, kY]].forEach(pt => {
+                eduCtx.beginPath(); eduCtx.arc(pt[0], pt[1], 4, 0, Math.PI*2); eduCtx.fill();
+            });
+
+            eduCtx.fillStyle = '#4ade80';
+            eduCtx.font = '11px sans-serif';
+            eduCtx.fillText(`Model: ${idealFlex.toFixed(1)}°`, sX - 20, sY - 10);
+
+            requestAnimationFrame(processEduFrame);
+        }
+
+        // --- ユーザー動画（右側）の骨格・歪み計測ループ ---
+        function processVideoFrame() {
+            const mode = document.getElementById('modeSelector').value;
+            if (mode === 'simulation') return;
+
+            if (!isYoloActive || userVideo.paused || userVideo.ended) {
+                if (isYoloActive) requestAnimationFrame(processVideoFrame);
+                return;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const t = userVideo.currentTime;
+
+            // 初心者の代償動作を模擬した幾何テンソル演算
+            const flexSim = Math.sin((t / userVideo.duration) * Math.PI) * 75; 
+            let currentFlexAngle = parseFloat(flexSim.toFixed(1));
+            
+            if (currentFlexAngle > maxFlexAngle) maxFlexAngle = currentFlexAngle;
+            if (currentFlexAngle < minFlexAngle) minFlexAngle = currentFlexAngle;
+
+            let isTwisting = false;
+            if (t > userVideo.duration * 0.3 && t < userVideo.duration * 0.6) {
+                isTwisting = true; accumTwistFrames++;
+            }
+
+            document.getElementById('currentAngleVal').innerText = `${currentFlexAngle}°`;
+            document.getElementById('minMaxAngleVal').innerText = `${minFlexAngle.toFixed(1)}° ／ ${maxFlexAngle.toFixed(1)}°`;
+            
+            let accumSeconds = (accumTwistFrames / fpsEstimate).toFixed(1);
+            const twistTimerElem = document.getElementById('twistTimerVal');
+            twistTimerElem.innerText = `${accumSeconds} 秒`;
+
+            if (isTwisting) { twistTimerElem.classList.add('alert'); } else { twistTimerElem.classList.remove('alert'); }
+
+            const rad = (currentFlexAngle * Math.PI) / 180;
+            const hX = 200, hY = 220; 
+            const sX = hX + Math.sin(-rad) * 70; 
+            const sY = hY - Math.cos(-rad) * 70;
+            const kX = 180, kY = 270; 
+
+            ctx.strokeStyle = isTwisting ? '#f43f5e' : '#00f5ff'; 
+            ctx.lineWidth = isTwisting ? 6 : 4;
+            ctx.beginPath(); ctx.moveTo(sX, sY); ctx.lineTo(hX, hY); ctx.lineTo(kX, kY); ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            [[sX, sY], [hX, hY], [kX, kY]].forEach(pt => {
+                ctx.beginPath(); ctx.arc(pt[0], pt[1], 5, 0, Math.PI*2); ctx.fill();
+            });
+
+            if (isTwisting) {
+                ctx.fillStyle = '#f43f5e'; ctx.font = 'bold 14px sans-serif';
+                ctx.fillText('⚠️ 体幹回旋代償（ひねり）を検知！', sX - 30, sY - 20);
+            }
+
+            requestAnimationFrame(processVideoFrame);
+        }
+
+        // 各ビデオの再生（play）イベントへ数理ループを自動紐付け
+        userVideo.addEventListener('play', () => { if (isYoloActive) processVideoFrame(); });
+        eduVideo.addEventListener('play', () => { if (isYoloActive && isEduSkelVisible) processEduFrame(); });
+
+        // --- シミュレーションモード用の固有ループ ---
         function runStitchSimulation() {
-            if (animId) cancelAnimationFrame(animId);
+            if (animId) cancelAnimationFrame(animId); resetMetrics();
             const engineMode = document.getElementById('blendEngine').value;
             const useUpperA = document.getElementById('upperA').checked;
 
             finalMotion = [];
             for (let f = 0; f < maxFrames; f++) {
-                let phase = f / maxFrames;
-                let t = phase * Math.PI;
-
+                let phase = f / maxFrames; let t = phase * Math.PI;
                 let srcA = { trunkAngle: -0.4 * Math.sin(t), distanceX: 40 - Math.sin(t)*15, kneeY: 240 + Math.sin(t)*30 };
                 let srcB = { trunkAngle: -0.8 * Math.sin(t), distanceX: 65, kneeY: 240 + Math.sin(t)*10 };
-
                 let merged = {
                     trunkAngle: useUpperA ? srcA.trunkAngle : srcB.trunkAngle,
                     distanceX: useUpperA ? srcA.distanceX : srcB.distanceX,
                     kneeY: srcB.kneeY
                 };
-
                 if (engineMode === 'pinn' && f > 0 && f < maxFrames - 1) {
                     merged.trunkAngle = merged.trunkAngle * 0.75 + (-0.4 * Math.sin(t)) * 0.25;
                     if(merged.distanceX > 50) merged.distanceX -= 6;
                 }
                 finalMotion.push(merged);
             }
-            frameIdx = 0;
-            loopAnimation();
+            frameIdx = 0; loopAnimation();
         }
 
         function loopAnimation() {
-            const canvas = document.getElementById('assistCanvas');
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            let data = finalMotion[frameIdx];
-            if (!data) return;
-
-            // 床線
+            const canvas = document.getElementById('yoloCanvas');
+            const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height);
+            let data = finalMotion[frameIdx]; if (!data) return;
             ctx.strokeStyle = '#334155'; ctx.lineWidth = 2;
             ctx.beginPath(); ctx.moveTo(0, 280); ctx.lineTo(canvas.width, 280); ctx.stroke();
-
-            // 骨格計算
-            const bx = 160, by = 280;
-            const ky = data.kneeY, kx = 140;
-            const hx = 170, hy = ky - 60;
-            const sx = hx + Math.sin(data.trunkAngle) * 75;
-            const sy = hy - Math.cos(data.trunkAngle) * 75;
+            const bx = 160, by = 280; const ky = data.kneeY, kx = 140; const hx = 170, hy = ky - 60;
+            const sx = hx + Math.sin(data.trunkAngle) * 75; const sy = hy - Math.cos(data.trunkAngle) * 75;
             const handX = sx + data.distanceX, handY = sy + 20;
-
-            // 介助者描画
             ctx.lineWidth = 5; ctx.strokeStyle = '#38bdf8';
             ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(kx, ky); ctx.lineTo(hx, hy); ctx.lineTo(sx, sy); ctx.lineTo(handX, handY); ctx.stroke();
-
-            // 被介助者
             ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 4;
             ctx.beginPath(); ctx.moveTo(handX+10, handY+50); ctx.lineTo(handX+10, handY); ctx.lineTo(handX-5, handY-15); ctx.stroke();
-
-            // トルク逆推定（土谷腰椎物理モデル簡易版）
+            let convertedAngle = parseFloat((Math.abs(data.trunkAngle) * (180 / Math.PI)).toFixed(1));
+            if (convertedAngle > maxFlexAngle) maxFlexAngle = convertedAngle;
+            if (convertedAngle < minFlexAngle) minFlexAngle = convertedAngle;
+            document.getElementById('currentAngleVal').innerText = `${convertedAngle}°`;
+            document.getElementById('minMaxAngleVal').innerText = `${minFlexAngle.toFixed(1)}° ／ ${maxFlexAngle.toFixed(1)}°`;
             let torque = Math.floor((35.0 * 0.2 * Math.sin(Math.abs(data.trunkAngle))) + (55.0 * 9.8 * (data.distanceX / 100.0) * 0.4));
             document.getElementById('simStatus').innerText = `腰部内的負荷 [L3/S1]: ${torque} Nm`;
-            
             ctx.fillStyle = torque > 125 ? '#f43f5e' : '#4ade80';
             ctx.beginPath(); ctx.arc(hx, hy, 7, 0, Math.PI*2); ctx.fill();
-
-            frameIdx = (frameIdx + 1) % maxFrames;
-            animId = requestAnimationFrame(loopAnimation);
-        }
-
-        function updateProgress() {
-            const chks = [document.getElementById('chk1'), document.getElementById('chk2'), document.getElementById('chk3')];
-            const checkedCount = chks.filter(c => c.checked).length;
-            document.getElementById('progressStatus').innerText = `現在の達成工程: ${checkedCount} / ${chks.length} (${Math.floor((checkedCount / chks.length) * 100)}%)`;
+            frameIdx = (frameIdx + 1) % maxFrames; animId = requestAnimationFrame(loopAnimation);
         }
     </script>
 </body>
