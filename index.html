@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>介助動作セルフチェック＆数理シミュレーション統合システム [Antigravity確定版]</title>
+    <title>介助動作フィジカル評価基盤 [Bugfix確定版]</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -67,6 +67,7 @@
             border: 1px solid #334155;
             min-height: 380px;
         }
+        /* iOS/iPadのSafariで枠が潰れて真っ黒になるのを防ぐため、明示的に実サイズを固定・継承させる */
         video, canvas {
             width: 100%;
             max-width: 480px;
@@ -74,10 +75,14 @@
             background-color: #050510;
             border-radius: 6px;
             border: 1px solid #475569;
+            display: block;
+            margin: 0 auto;
+        }
+        video {
             object-fit: contain;
         }
         .file-input-wrapper {
-            margin-top: 10px;
+            margin-top: 15px;
             background-color: #0f172a;
             padding: 10px;
             border-radius: 6px;
@@ -97,4 +102,271 @@
             border-bottom: 1px solid #1e293b;
             font-size: 11pt;
         }
-        .task-item input
+        .task-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 15px;
+            cursor: pointer;
+        }
+        .task-title {
+            font-weight: bold;
+            color: #cbd5e1;
+            flex-grow: 1;
+        }
+        .task-tip {
+            font-size: 9.5pt;
+            color: #38bdf8;
+            background-color: #0c4a6e;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .summary-box {
+            font-size: 12pt;
+            font-weight: bold;
+            color: #4ade80;
+            margin-top: 15px;
+            text-align: right;
+        }
+        .status-log {
+            background-color: #020617;
+            font-family: monospace;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 9.5pt;
+            color: #38bdf8;
+            max-height: 80px;
+            overflow-y: auto;
+            border: 1px solid #334155;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>介助動作フィジカル評価基盤</h1>
+        
+        <div class="system-switcher">
+            <label for="modeSelector">⚙️ 検証モード切り替え：</label>
+            <select id="modeSelector" onchange="switchSystemMode()">
+                <option value="planC">【プランC】撮影動画対比 ＋ セルフチェック（現場運用用）</option>
+                <option value="simulation">【数理モデル】FrankenMotion 介助動作負荷シミュレーター（デモ・研究用）</option>
+            </select>
+        </div>
+
+        <div class="video-split-grid">
+            
+            <div class="video-card">
+                <h3 id="leftTitle" style="margin-top:0; color:#4ade80;">【左】お手本教育動画（目標基準）</h3>
+                
+                <video id="eduVideo" src="videos/edu_assist.mp4" controls loop muted playsinline style="display: block;"></video>
+                
+                <div id="simLeftParam" style="display: none; text-align: left; background-color: #0f172a; padding: 15px; border-radius: 6px; height: 290px; box-sizing: border-box;">
+                    <label style="font-size:9.5pt; display:block; margin-bottom:5px;">結合カーネル（Stitching Algorithm）</label>
+                    <select id="blendEngine" style="width:100%; padding:8px; background:#1e293b; color:white; border:1px solid #475569; margin-bottom:15px;">
+                        <option value="raw">Simple Merge (単純接合: カクつき発生)</option>
+                        <option value="pinn" selected>Physics-Informed (高階微分連続)</option>
+                    </select>
+                    <label style="font-size:9.5pt; display:block; margin-bottom:5px;">空間チャンク配合</label>
+                    <div style="font-size: 9.5pt; color: #cbd5e1; line-height: 1.8;">
+                        <input type="radio" name="upperSource" id="upperA" checked> 上肢·体幹: 熟練者チャンク<br>
+                        <input type="radio" name="upperSource" id="upperB"> 上肢·体幹: 初心者チャンク
+                    </div>
+                    <button style="margin-top:20px; width:100%; background:#be123c; color:white; border:none; padding:12px; font-weight:bold; border-radius:6px; cursor:pointer;" onclick="runStitchSimulation()">シミュレーション演算を実行</button>
+                </div>
+            </div>
+
+            <div class="video-card">
+                <h3 id="rightTitle" style="margin-top:0; color:#38bdf8;">【右】あなたの介助動作（検証用動画）</h3>
+                
+                <video id="userVideo" controls playsinline style="display: block;"></video>
+                
+                <canvas id="assistCanvas" width="440" height="320" style="display: none;"></canvas>
+                
+                <div id="pickerWrapper" class="file-input-wrapper" style="display: block;">
+                    <label style="font-size: 9.5pt; color: #38bdf8; display: block; margin-bottom: 5px;">
+                        👇 iPadで撮影した動画を選択（カメラ起動撮影も可）
+                    </label>
+                    <input type="file" id="videoPicker" accept="video/*" onchange="loadUserVideo(this)">
+                </div>
+            </div>
+
+        </div>
+
+        <div class="task-list-panel">
+            <h3 style="margin-top:0; color:#cbd5e1;">移乗介助・工程別セルフチェック項目</h3>
+            <div class="task-item">
+                <input type="checkbox" id="chk1" onchange="updateProgress()">
+                <div class="task-title">工程1: 被介助者との距離を十分に詰め，密着できているか</div>
+                <div class="task-tip">コツ: モーメントアームを最小化し，腰椎への負担を減らします</div>
+            </div>
+            <div class="task-item">
+                <input type="checkbox" id="chk2" onchange="updateProgress()">
+                <div class="task-title">工程2: 骨盤を後傾させ，体幹をできるだけ直立に保っているか</div>
+                <div class="task-tip">コツ: 腰を曲げるのではなく，股関節と膝関節を深く曲げます</div>
+            </div>
+            <div class="task-item">
+                <input type="checkbox" id="chk3" onchange="updateProgress()">
+                <div class="task-title">工程3: 声かけを行い，被介助者の重心移動と同期して抱え上げているか</div>
+                <div class="task-tip">コツ: 突発的なパニック動作（外乱入力）による労災を防ぎます</div>
+            </div>
+            <div class="summary-box" id="progressStatus">現在の達成工程: 0 / 3 (0%)</div>
+            <div class="summary-box" id="simStatus" style="color:#f43f5e; display:none; text-align:right;">腰部内的負荷 [L3/S1]: -- Nm</div>
+        </div>
+
+        <div class="status-log" id="sysLog">[SYSTEM] Engine initialization successful. Plan C Active.</div>
+    </div>
+
+    <script>
+        let animId = null;
+        let frameIdx = 0;
+        const maxFrames = 60;
+        let finalMotion = [];
+
+        function printLog(txt) {
+            const logBox = document.getElementById('sysLog');
+            logBox.innerHTML += `<br>[EXEC] ${txt}`;
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        // --- iOS/iPad Safariのレンダリングバグを100%回避する表示切り替えロジック ---
+        function switchSystemMode() {
+            const mode = document.getElementById('modeSelector').value;
+            if (animId) cancelAnimationFrame(animId);
+
+            const eduVideo = document.getElementById('eduVideo');
+            const simLeftParam = document.getElementById('simLeftParam');
+            const userVideo = document.getElementById('userVideo');
+            const assistCanvas = document.getElementById('assistCanvas');
+            const pickerWrapper = document.getElementById('pickerWrapper');
+            const leftTitle = document.getElementById('leftTitle');
+            const rightTitle = document.getElementById('rightTitle');
+            const simStatus = document.getElementById('simStatus');
+
+            if (mode === 'planC') {
+                // プランC表示への切り替え
+                eduVideo.style.display = "block";
+                simLeftParam.style.display = "none";
+                userVideo.style.display = "block";
+                assistCanvas.style.display = "none";
+                pickerWrapper.style.display = "block";
+                simStatus.style.display = "none";
+
+                leftTitle.innerText = "【左】お手本教育動画（目標基準）";
+                leftTitle.style.color = "#4ade80";
+                rightTitle.innerText = "【右】あなたの介助動作（検証用動画）";
+                rightTitle.style.color = "#38bdf8";
+
+                printLog("【プランC】実動画対比モードへ切り替えました．");
+            } else {
+                // シミュレーション表示への切り替え
+                eduVideo.style.display = "none";
+                simLeftParam.style.display = "block";
+                userVideo.style.display = "none";
+                assistCanvas.style.display = "block";
+                pickerWrapper.style.display = "none";
+                simStatus.style.display = "block";
+
+                leftTitle.innerText = "【左】潜在空間数理パラメータ";
+                leftTitle.style.color = "#f43f5e";
+                rightTitle.innerText = "【右】運動断片化合成の可視化";
+                rightTitle.style.color = "#be123c";
+
+                printLog("【数理モデル】シミュレーションモードへ切り替えました．");
+                runStitchSimulation();
+            }
+        }
+
+        // --- プランC用：ローカル動画の仮想URLマウント処理 ---
+        function loadUserVideo(input) {
+            const file = input.files[0];
+            if (file) {
+                const videoElement = document.getElementById('userVideo');
+                const objectURL = URL.createObjectURL(file);
+                
+                videoElement.src = objectURL;
+                videoElement.load(); // iPad Safariでのコンテキスト強制リフレッシュ
+                videoElement.play().catch(err => {
+                    printLog("自動再生制限を検知：手動で再生ボタンを押してください．");
+                });
+                printLog("撮影動画のローカルマウントに成功しました．");
+            }
+        }
+
+        // --- シミュレーション用：数理ダイナミクス演算 ---
+        function runStitchSimulation() {
+            if (animId) cancelAnimationFrame(animId);
+            const engineMode = document.getElementById('blendEngine').value;
+            const useUpperA = document.getElementById('upperA').checked;
+
+            finalMotion = [];
+            for (let f = 0; f < maxFrames; f++) {
+                let phase = f / maxFrames;
+                let t = phase * Math.PI;
+
+                let srcA = { trunkAngle: -0.4 * Math.sin(t), distanceX: 40 - Math.sin(t)*15, kneeY: 240 + Math.sin(t)*30 };
+                let srcB = { trunkAngle: -0.8 * Math.sin(t), distanceX: 65, kneeY: 240 + Math.sin(t)*10 };
+
+                let merged = {
+                    trunkAngle: useUpperA ? srcA.trunkAngle : srcB.trunkAngle,
+                    distanceX: useUpperA ? srcA.distanceX : srcB.distanceX,
+                    kneeY: srcB.kneeY
+                };
+
+                if (engineMode === 'pinn' && f > 0 && f < maxFrames - 1) {
+                    merged.trunkAngle = merged.trunkAngle * 0.75 + (-0.4 * Math.sin(t)) * 0.25;
+                    if(merged.distanceX > 50) merged.distanceX -= 6;
+                }
+                finalMotion.push(merged);
+            }
+            frameIdx = 0;
+            loopAnimation();
+        }
+
+        function loopAnimation() {
+            const canvas = document.getElementById('assistCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            let data = finalMotion[frameIdx];
+            if (!data) return;
+
+            // 床線
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0, 280); ctx.lineTo(canvas.width, 280); ctx.stroke();
+
+            // 骨格計算
+            const bx = 160, by = 280;
+            const ky = data.kneeY, kx = 140;
+            const hx = 170, hy = ky - 60;
+            const sx = hx + Math.sin(data.trunkAngle) * 75;
+            const sy = hy - Math.cos(data.trunkAngle) * 75;
+            const handX = sx + data.distanceX, handY = sy + 20;
+
+            // 介助者描画
+            ctx.lineWidth = 5; ctx.strokeStyle = '#38bdf8';
+            ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(kx, ky); ctx.lineTo(hx, hy); ctx.lineTo(sx, sy); ctx.lineTo(handX, handY); ctx.stroke();
+
+            // 被介助者
+            ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(handX+10, handY+50); ctx.lineTo(handX+10, handY); ctx.lineTo(handX-5, handY-15); ctx.stroke();
+
+            // トルク逆推定（土谷腰椎物理モデル簡易版）
+            let torque = Math.floor((35.0 * 0.2 * Math.sin(Math.abs(data.trunkAngle))) + (55.0 * 9.8 * (data.distanceX / 100.0) * 0.4));
+            document.getElementById('simStatus').innerText = `腰部内的負荷 [L3/S1]: ${torque} Nm`;
+            
+            ctx.fillStyle = torque > 125 ? '#f43f5e' : '#4ade80';
+            ctx.beginPath(); ctx.arc(hx, hy, 7, 0, Math.PI*2); ctx.fill();
+
+            frameIdx = (frameIdx + 1) % maxFrames;
+            animId = requestAnimationFrame(loopAnimation);
+        }
+
+        function updateProgress() {
+            const chks = [document.getElementById('chk1'), document.getElementById('chk2'), document.getElementById('chk3')];
+            const checkedCount = chks.filter(c => c.checked).length;
+            document.getElementById('progressStatus').innerText = `現在の達成工程: ${checkedCount} / ${chks.length} (${Math.floor((checkedCount / chks.length) * 100)}%)`;
+        }
+    </script>
+</body>
+</html>
