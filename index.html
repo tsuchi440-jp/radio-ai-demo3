@@ -226,6 +226,7 @@
                     const cols = lines[i].split(',');
                     if (cols.length < 10) continue;
                     let frameData = { frame: parseInt(cols[headerMap['frame_index']]) };
+                    time: parseFloat(cols[headerMap['time']])
                     KPS.forEach(kp => {
                         frameData[kp] = { x: parseFloat(cols[headerMap[kp + '_x']]), y: parseFloat(cols[headerMap[kp + '_y']]), conf: parseFloat(cols[headerMap[kp + '_conf']]) };
                     });
@@ -271,9 +272,11 @@
         function processEduFrame() {
             if (eduSkeletonData.length === 0) return;
             
-            const currentFrame = Math.floor(eduVideo.currentTime * FPS);
-            let data = eduSkeletonData.find(d => d.frame === currentFrame);
-            if (!data) data = eduSkeletonData[Math.min(currentFrame, eduSkeletonData.length - 1)];
+            const currentTime = eduVideo.currentTime;
+            // 動画の現在秒数に「一番近いtime」を持つCSVデータを検索（絶対同期アルゴリズム）
+            let data = eduSkeletonData.reduce((prev, curr) => {
+                return (Math.abs(curr.time - currentTime) < Math.abs(prev.time - currentTime) ? curr : prev);
+            });
 
             if (data) {
                 updateHud('edu', data.calcAngle, data.cumMinAngle, data.cumMaxAngle, data.cumTwistFrames, data.isTwisting);
