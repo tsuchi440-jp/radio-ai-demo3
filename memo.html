@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>介助動作フィジカル評価・教育フィードバック基盤 総合要求仕様書</title>
+    <style>
+        /* 画面表示時のスタイル（A4用紙を模したデザイン） */
+        body {
+            font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+            background-color: #f1f5f9;
+            color: #1e293b;
+            margin: 0;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+        .document-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 50px 60px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+        }
+        
+        /* 見出しの装飾 */
+        h1 {
+            text-align: center;
+            font-size: 22pt;
+            color: #0f172a;
+            border-bottom: 3px solid #0284c7;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        h1 span {
+            display: block;
+            font-size: 14pt;
+            color: #64748b;
+            margin-top: 10px;
+            font-weight: normal;
+        }
+        h2 {
+            font-size: 16pt;
+            color: #0369a1;
+            border-left: 5px solid #0284c7;
+            padding-left: 10px;
+            margin-top: 40px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 5px;
+        }
+        h3 {
+            font-size: 13pt;
+            color: #0f172a;
+            margin-top: 25px;
+            background-color: #f8fafc;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        /* 本文とリスト */
+        p {
+            font-size: 11pt;
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+        ul {
+            margin-bottom: 20px;
+            padding-left: 25px;
+        }
+        li {
+            font-size: 11pt;
+            margin-bottom: 8px;
+        }
+        .important {
+            color: #b91c1c;
+            font-weight: bold;
+        }
+        .highlight {
+            background-color: #fef08a;
+            padding: 2px 4px;
+            border-radius: 2px;
+        }
+        
+        /* 補足ボックス */
+        .info-box {
+            background-color: #f0fdf4;
+            border-left: 4px solid #22c55e;
+            padding: 15px;
+            margin-top: 30px;
+            border-radius: 0 4px 4px 0;
+            font-size: 10.5pt;
+        }
+
+        /* フッター */
+        .footer {
+            margin-top: 50px;
+            text-align: right;
+            font-size: 10pt;
+            color: #64748b;
+        }
+
+        /* ======== PDF印刷時の最適化設定 ======== */
+        @media print {
+            body {
+                background-color: #ffffff;
+                padding: 0;
+            }
+            .document-container {
+                max-width: 100%;
+                padding: 0;
+                box-shadow: none;
+            }
+            h2, h3 {
+                page-break-after: avoid;
+            }
+            li, p {
+                page-break-inside: avoid;
+            }
+            /* A4サイズを強制 */
+            @page {
+                size: A4;
+                margin: 20mm;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="document-container">
+        <h1>介助動作フィジカル評価・教育フィードバック基盤<br><span>総合要求仕様書（Version 2.0）</span></h1>
+
+        <h2>１．プロジェクトの目的と全体アーキテクチャ</h2>
+        <p>
+            本システムは，介護・医療現場における移乗介助動作を定量的に評価し，腰痛予防および技能向上のためのフィードバックを自動化する統合プラットフォームである．<br>
+            システムは，現場で操作する「フロントエンド（UI/UX層）」と，AI推論・力学計算を担う「バックエンド（解析層）」に分割され，各モジュールの評価基準や計算式は，プログラムの根幹を直接改変せずに外部ファイルから容易にカスタマイズ（疎結合化）できる設計とする．
+        </p>
+
+        <h2>２．モジュール別 要求要件</h2>
+
+        <h3>【要件1】フロントエンドUI：動画対比と動的チェックリスト</h3>
+        <p>現場の指導者が直感的に操作できるWebベースのUIを構築する．</p>
+        <ul>
+            <li><strong>動画の同期再生：</strong>お手本動画（固定）と，現場で撮影した被験者の動画（ファイル選択）を並べて同時再生できる機能．</li>
+            <li><strong>外部定義型・5段階チェックリスト機能：</strong>画面上に5段階評価（1:全くできていない ～ 5:完璧である）のチェックリストを配置する．<br>
+            <span class="important">[重要]</span> チェック項目（設問テキスト）はHTMLソースコードに直接記述せず，外部ファイル（<code>checklist_config.csv</code> 等）から動的に読み込んで生成すること．これにより将来の評価指標の変更にノーコードで対応可能とする．</li>
+            <li><strong>PDFエクスポート機能：</strong>評価完了後，「評価結果を保存」ボタンを押下することで，チェック結果および解析結果をPDF形式でダウンロードできること．保存時にダイアログを表示し，指導者が任意のファイル名（例：<code>20260605_山田太郎_移乗評価.pdf</code>）を指定して保存できる仕様とすること（jsPDFやhtml2pdf.jsなどのライブラリ活用を推奨）．</li>
+        </ul>
+
+        <h3>【要件2】バックエンドAI解析：YOLO骨格抽出とキネマティクス計測</h3>
+        <p>撮影した動画から「解析ボタン」をトリガーとして，Pythonによる重計算（ローカル実行）を起動する．</p>
+        <ul>
+            <li><strong>骨格オーバーレイ動画の生成（FPS厳守）：</strong>Ultralytics YOLOv8 または YOLO11-Pose（フルサイズモデル推奨）を用い，骨格を重畳した新しい動画ファイルを生成する．<br>
+            <span class="important">[重要]</span> 書き出す動画のFPS（フレームレート）と解像度は，必ず元の入力動画と完全に一致させること（音声ズレや再生速度の異常を防ぐため，cv2.VideoCaptureで取得した元FPS値をcv2.VideoWriterに正確に引き継ぐこと）．</li>
+            <li><strong>キネマティクスデータの抽出と出力：</strong>
+                <ul>
+                    <li><strong>上体前屈角（腰部屈曲角）：</strong>直立姿勢を「0度」とし，前屈（お辞儀）方向をプラスとする．肩の中点と腰の中点を結ぶ体幹ベクトルと，鉛直線のなす角から算出すること．</li>
+                    <li><strong>膝角度：</strong>腰・膝・足首の3点の座標から成す内角を計算すること．</li>
+                    <li><strong>捻り動作（代償回旋）の秒数：</strong>動画初期の直立時の「肩幅（ピクセル幅）」を基準とし，肩幅が基準の65%未満に縮小したフレームを「捻りが発生している」と判定し，その合計フレーム数÷FPSから「捻り秒数」を算出すること．</li>
+                </ul>
+            </li>
+            <li><strong>統計グラフの出力：</strong>抽出した全フレームの時系列データから，<strong>「上体前屈角のヒストグラム（分布）」</strong>および<strong>「膝角度のヒストグラム」</strong>を画像（PNG等）として出力すること．加えて，「上体前屈角の最大値・最小値」を数値として算出すること．</li>
+        </ul>
+
+        <h3>【要件3】バイオメカニクス計算：腰部負担値の算出と外部化</h3>
+        <p>抽出した上体前屈角等のデータをもとに，椎間板や脊柱起立筋にかかる「腰部負担値」を算出する．</p>
+        <ul>
+            <li><strong>計算式の外部ファイル化（プラグイン構造）：</strong>力学計算式（モーメントアーム等のパラメータ）は，メインのPythonコード内にハードコードしてはならない．<br>
+            <span class="important">[重要]</span> 計算式や定数パラメータは，別ファイル（例：<code>formula_config.py</code> や <code>physics_params.json</code>）として切り出すこと．これにより，将来的に研究代表者が新しい推定モデルを考案した際，システム本体を改修することなく数式のみを差し替えられる構造を担保すること．</li>
+        </ul>
+
+        <h3>【要件4】自動フィードバック：ロジックベースのアドバイス提示</h3>
+        <p>計算された「腰部負担値」「最大前屈角」「捻り秒数」の数値を条件分岐させ，介助者へのテキストアドバイスを自動生成する．</p>
+        <ul>
+            <li><strong>判定ロジックとテキストの外部ファイル化：</strong>アドバイスの内容や，それを発火させるための「しきい値（Threshold）」は別ファイル（例：<code>advice_rules.csv</code> または <code>advice_config.json</code>）で管理すること．</li>
+            <li><strong>外部ファイルの構成例：</strong>
+                <ul>
+                    <li><em>ルール1:</em> <code>if 捻り秒数 &gt; 2.0</code> ⇒ <em>メッセージ:</em> 「体幹の回旋（ひねり）が2秒以上続いています．椎間板ヘルニアのリスクが極めて高いため，足の向きを変えて対応してください．」</li>
+                    <li><em>ルール2:</em> <code>if 腰部負担値 &gt; 300</code> ⇒ <em>メッセージ:</em> 「腰部への内的負荷が基準値を超過しています．対象者にもっと密着してください．」</li>
+                </ul>
+            </li>
+            <li>解析完了後，このルールエンジンを通過させて生成されたテキスト群を，UI画面および出力PDFに反映させること．</li>
+        </ul>
+
+        <h2>３．開発担当者へのマイルストーン（推奨手順）</h2>
+        <p>本システムの要件は多岐にわたるため，以下のフェーズに分けてアジャイル的に開発を進めること．</p>
+        <ul>
+            <li><strong>Phase 1（UIとAIの基礎）：</strong>HTML/JSで動画の同時再生と，任意のCSVから読み込んだチェックリスト（5段階）の表示・PDF保存機能を作る．並行して，Pythonで動画を読み込み，YOLOで骨格を重畳した同FPSの動画を書き出すスクリプトを完成させる．</li>
+            <li><strong>Phase 2（キネマティクスとグラフ化）：</strong>Pythonスクリプトを拡張し，上体前屈角（最大・最小），膝角度，捻り秒数を計算し，Matplotlib等でヒストグラム画像を出力させる．</li>
+            <li><strong>Phase 3（アーキテクチャの疎結合化：最重要）：</strong>「腰部負担値の計算関数」と「アドバイス判定ロジック」を別の設定ファイル（JSON等）に切り離し，メインのPythonプログラムがそれを動的に読み込んで結果を出力する「ルールエンジン」の構造を完成させる．</li>
+        </ul>
+
+        <div class="footer">
+            以上<br>
+            （作成・監修：研究代表者）
+        </div>
+    </div>
+
+</body>
+</html>
