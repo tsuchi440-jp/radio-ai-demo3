@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>介助動作フィジカル評価・教育フィードバック基盤 総合要求仕様書</title>
+    <style>
+        /* 画面表示時のスタイル（A4用紙を模したデザイン） */
+        body {
+            font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+            background-color: #f1f5f9;
+            color: #1e293b;
+            margin: 0;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+        .document-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 50px 60px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+        }
+        
+        /* 見出しの装飾 */
+        h1 {
+            text-align: center;
+            font-size: 22pt;
+            color: #0f172a;
+            border-bottom: 3px solid #0284c7;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        h1 span {
+            display: block;
+            font-size: 14pt;
+            color: #64748b;
+            margin-top: 10px;
+            font-weight: normal;
+        }
+        h2 {
+            font-size: 16pt;
+            color: #0369a1;
+            border-left: 5px solid #0284c7;
+            padding-left: 10px;
+            margin-top: 40px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 5px;
+        }
+        h3 {
+            font-size: 13pt;
+            color: #0f172a;
+            margin-top: 25px;
+            background-color: #f8fafc;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        /* 本文とリスト */
+        p {
+            font-size: 11pt;
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+        ul {
+            margin-bottom: 20px;
+            padding-left: 25px;
+        }
+        li {
+            font-size: 11pt;
+            margin-bottom: 8px;
+        }
+        .important {
+            color: #b91c1c;
+            font-weight: bold;
+        }
+        .highlight {
+            background-color: #fef08a;
+            padding: 2px 4px;
+            border-radius: 2px;
+        }
+
+        /* フッター */
+        .footer {
+            margin-top: 50px;
+            text-align: right;
+            font-size: 10pt;
+            color: #64748b;
+        }
+
+        /* ======== PDF印刷時の最適化設定 ======== */
+        @media print {
+            body { background-color: #ffffff; padding: 0; }
+            .document-container { max-width: 100%; padding: 0; box-shadow: none; }
+            h2, h3 { page-break-after: avoid; }
+            li, p { page-break-inside: avoid; }
+            /* A4サイズを強制 */
+            @page { size: A4; margin: 20mm; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="document-container">
+        <h1>介助動作フィジカル評価・教育フィードバック基盤<br><span>総合要求仕様書（ベンダー発注用 Version 3.5）<br>〜ラップトップ＆外部カメラ統合スタンドアロン版〜</span></h1>
+
+        <h2>１．プロジェクトの目的と全体アーキテクチャ</h2>
+        <p>
+            本システムは，介護・医療現場における移乗介助動作を定量的に評価し，腰痛予防および技能向上のためのフィードバックを自動化する統合プラットフォームである．<br>
+            現場への持ち込み機材を最小化し，ネットワークトラブルを完全に排除するため，<strong>「1台の高性能ラップトップPCと外部USBカメラ」</strong>のみで撮影・AI推論・力学計算・結果提示までをローカル環境で完結させるスタンドアロン・アプリケーション（またはローカルWebアプリ）として構築する．
+        </p>
+
+        <h2>２．フロントエンド要件（UI/UX・撮影機能）</h2>
+        <ul>
+            <li><strong>外部カメラ連携と動画録画：</strong>システムUI上からPCに接続された外部カメラ（USB Webカメラ等）の映像をリアルタイムプレビューし，ワンクリックで被験者の介助動作を録画・保存できる機能を実装すること．</li>
+            <li><strong>動画の同期再生：</strong>お手本動画（固定）と，直前に撮影した被験者の動画を並べて同時再生できるビューワー機能．</li>
+            <li><strong>外部定義型・5段階チェックリスト機能：</strong>画面上に5段階評価のチェックリストを配置する．<br>
+            <span class="important">[重要]</span> チェック項目はシステム内にハードコードせず，外部ファイル（<code>checklist_config.csv</code> 等）から動的に読み込んで生成すること．</li>
+            <li><strong>PDFエクスポート機能：</strong>評価結果およびAI解析結果をPDF形式でダウンロードできる機能．保存時に任意のファイル名を指定できる仕様とすること．</li>
+        </ul>
+
+        <h2>３．バックエンド要件（AI解析・キネマティクス計測）</h2>
+        <p>録画完了後，「解析ボタン」をトリガーとして，ローカルPC上で自動的に以下の処理を実行する．</p>
+        <ul>
+            <li><strong>骨格オーバーレイ動画の生成：</strong>Ultralytics YOLOv8/11-Pose を用い，骨格を重畳した新しい動画ファイルを生成する．書き出す動画のFPSと解像度は入力動画と完全に一致させること．</li>
+            <li><strong>キネマティクスデータの抽出と出力：</strong>
+                <ul>
+                    <li><strong>上体前屈角：</strong>直立姿勢を「0度」とし，前屈方向をプラスとする．肩の中点と腰の中点を結ぶ体幹ベクトルと，鉛直線のなす角から算出する．</li>
+                    <li><strong>膝角度：</strong>腰・膝・足首の3点の座標から成す内角を計算する．</li>
+                    <li><strong>捻り動作（代償回旋）の秒数：</strong>直立時初期の「肩幅（ピクセル）」を基準とし，肩幅が基準の65%未満に縮小したフレームを「捻り
