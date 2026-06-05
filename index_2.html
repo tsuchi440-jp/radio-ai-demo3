@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>介助動作フィジカル評価基盤 [シングルキャンバス合成版]</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 800px; background-color: #1e293b; border-radius: 12px; padding: 25px; box-shadow: 0 10px 15px rgba(0, 0, 0, 0.5); }
+        h1 { font-size: 18pt; color: #38bdf8; margin-top: 0; border-bottom: 2px solid #0284c7; padding-bottom: 10px; }
+        
+        /* 映像を転写するメインキャンバス */
+        canvas { width: 100%; max-width: 640px; background-color: #000; border-radius: 8px; border: 2px solid #475569; display: block; margin: 0 auto; cursor: pointer; }
+        
+        .controls { display: flex; justify-content: center; gap: 15px; margin-top: 15px; }
+        button { background-color: #0284c7; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 11pt; }
+        button:hover { background-color: #0369a1; }
+        
+        .status-log { background-color: #020617; font-family: monospace; padding: 10px; border-radius: 6px; font-size: 9.5pt; color: #4ade80; margin-top: 20px; border: 1px solid #334155; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>お手本骨格ビューワー（HTMLリアルタイム合成）</h1>
+        <p style="font-size: 10pt; color: #94a3b8; text-align: center;">
+            ※動画とCSVデータをCanvas内で直接合成しています。iPadでもフリーズしません。
+        </p>
+
+        <video id="hiddenVideo" src="videos/edu_assist.mp4" playsinline muted loop style="width: 0; height: 0; position: absolute; visibility: hidden;"></video>
+
+        <canvas id="renderCanvas" width="640" height="480"></canvas>
+
+        <div class="controls">
+            <button onclick="togglePlay()">▶ 再生 / ⏸ 一時停止</button>
+            <button onclick="toggleSkeleton()" style="background-color: #10b981;">🦴 骨格表示 ON/OFF</button>
+        </div>
+
+        <div class="status-log" id="sysLog">[SYSTEM] 起動中... CSVデータを読み込みます。</div>
+    </div>
+
+    <script>
+        const video = document.getElementById('hiddenVideo');
+        const canvas = document.getElementById('renderCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let skeletonData = [];
+        let headerMap = {};
+        let isSkeletonVisible = true;
+        let isPlaying = false;
+        
+        const FPS = 30; // お手本動画のFPS
+        const KPS = ['nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear', 'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow', 'left_wrist', 'right_wrist', 'left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle'];
+        const SKELETON_LINKS = [['nose', 'left_eye'], ['left_eye', 'left_ear'], ['nose', 'right_eye'], ['right_eye', 'right_ear'], ['left_shoulder', 'right_shoulder'], ['left_shoulder', 'left_hip'], ['right_shoulder', 'right_hip'], ['left_hip', 'right_hip'], ['left_shoulder', 'left_elbow'], ['left_elbow', 'left_wrist'], ['right_shoulder', 'right_elbow'], ['right_elbow', 'right_wrist'], ['left_hip', 'left_knee'], ['left_knee', 'left_ankle'], ['right_hip', 'right_knee'], ['right_knee', 'right_ankle']];
+
+        function log(msg) {
+            document.getElementById('sysLog').innerHTML = `[SYSTEM] ${msg}`;
+        }
+
+        // --- 1. CSVデータの読み込み ---
+        async function loadCSV() {
+            try {
+                const res = await fetch('data/edu_skeleton.csv');
+                if (!res.ok) throw new Error("CSVファイルが見つかりません。");
+                
+                const text = await res.text();
+                const lines = text.trim().split('\n');
+                const headers = lines[0].split(',');
+                headers.forEach((h, i) => headerMap[h.trim()] = i);
+
+                let rawData = [];
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = lines[i].split(',');
+                    if (cols.length < 10) continue;
+                    
+                    // time列がある場合はtimeを、無い場合はframe_indexを優先して取得
+                    let t = cols[headerMap['time']] ? parseFloat(cols[headerMap['time']]) : parseFloat(cols[headerMap['frame_index']]) / FPS;
+                    
+                    let frameData = { time: t };
+                    KPS.forEach(kp => {
+                        if (headerMap[kp + '_x'] !== undefined) {
+                            frameData[kp] = {
+                                x: parseFloat(cols[headerMap[kp + '_x']]),
+                                y: parseFloat(cols[headerMap[kp + '_y']]),
+                                conf: parseFloat(cols[headerMap[kp + '_conf']])
+                            };
+                        }
+                    });
+                    rawData.push(frameData);
+                }
+                skeletonData = rawData;
+                log(`CSVデータのロード完了（全${skeletonData.length}フレーム）。準備OKです。`);
+                
+                // 動画のロード完了を待って最初のフレームを描画
+                video.addEventListener('loadeddata', () => {
+                    canvas.width = video.videoWidth || 640;
+                    canvas.height = video.videoHeight || 480;
+                    renderLoop();
+                });
+                video.load();
+
+            } catch (e) {
+                log(`エラー: ${e.message}`);
+            }
+        }
+
+        // --- 2. 操作コントロール ---
+        function togglePlay() {
+            if (video.paused) {
+                video.play();
+                isPlaying = true;
+                renderLoop();
+                log("再生中...");
+            } else {
+                video.pause();
+                isPlaying = false;
+                log("一時停止中");
+            }
+        }
+
+        function toggleSkeleton() {
+            isSkeletonVisible = !isSkeletonVisible;
+            if (!isPlaying) renderLoop(); // 停止中でも再描画
+        }
+
+        // Canvasをタップしても再生/停止できるようにする
+        canvas.addEventListener('click', togglePlay);
+
+        // --- 3. メイン描画ループ（映像と骨格を1つのCanvasに描く） ---
+        function renderLoop() {
+            // ① まず、隠れているvideoの現在の映像をCanvasにプリントする
+            if (video.readyState >= 2) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            }
+
+            // ② その上に骨格を描画する
+            if (isSkeletonVisible && skeletonData.length > 0) {
+                const currentTime = video.currentTime;
+                
+                // 現在の動画の秒数に最も近いCSVの行を検索（絶対ズレない手法）
+                let data = skeletonData.reduce((prev, curr) => {
+                    return (Math.abs(curr.time - currentTime) < Math.abs(prev.time - currentTime) ? curr : prev);
+                });
+
+                if (data) {
+                    // スケール計算（動画のネイティブ解像度とYOLOの推論解像度が同じ前提。もしズレる場合はここに倍率補正を入れます）
+                    const scaleX = 1.0;
+                    const scaleY = 1.0;
+
+                    // ボーンの描画
+                    ctx.strokeStyle = '#4ade80'; // 緑色
+                    ctx.lineWidth = 4;
+                    SKELETON_LINKS.forEach(link => {
+                        if (data[link[0]] && data[link[1]]) {
+                            const p1 = data[link[0]], p2 = data[link[1]];
+                            if (p1.conf > 0.3 && p2.conf > 0.3) {
+                                ctx.beginPath();
+                                ctx.moveTo(p1.x * scaleX, p1.y * scaleY);
+                                ctx.lineTo(p2.x * scaleX, p2.y * scaleY);
+                                ctx.stroke();
+                            }
+                        }
+                    });
+
+                    // 関節点の描画
+                    ctx.fillStyle = '#ffffff';
+                    KPS.forEach(kp => {
+                        if (data[kp] && data[kp].conf > 0.3) {
+                            ctx.beginPath();
+                            ctx.arc(data[kp].x * scaleX, data[kp].y * scaleY, 5, 0, Math.PI*2);
+                            ctx.fill();
+                        }
+                    });
+                }
+            }
+
+            // 動画が再生中なら次のフレームも描画を続ける
+            if (!video.paused && !video.ended) {
+                requestAnimationFrame(renderLoop);
+            }
+        }
+
+        // 初期化実行
+        window.addEventListener('DOMContentLoaded', loadCSV);
+
+    </script>
+</body>
+</html>
