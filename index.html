@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>介助動作フィジカル評価基盤 [左右YOLOマルチレイヤー確定版]</title>
+    <title>介助動作フィジカル評価基盤 [マルチウィンドウ確定版]</title>
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <style>
         body {
@@ -23,478 +23,252 @@
             padding: 25px;
             box-shadow: 0 10px 15px rgba(0, 0, 0, 0.5);
         }
-        h1 {
-            font-size: 18pt;
-            color: #38bdf8;
-            margin-top: 0;
-            border-bottom: 2px solid #0284c7;
-            padding-bottom: 10px;
-        }
-        .system-switcher {
-            background-color: #0c4a6e;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid #0284c7;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .system-switcher select {
-            padding: 8px 16px;
-            font-size: 11pt;
-            background-color: #1e293b;
-            color: white;
-            border: 1px solid #38bdf8;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .video-split-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        .video-card {
-            background-color: #020617;
-            border-radius: 8px;
-            padding: 15px;
-            text-align: center;
-            border: 1px solid #334155;
-            min-height: 380px;
-            position: relative;
-        }
-        video, canvas {
-            width: 100%;
-            max-width: 480px;
-            height: 320px;
-            background-color: #050510;
-            border-radius: 6px;
-            border: 1px solid #475569;
-            display: block;
-            margin: 0 auto;
-        }
-        video {
-            object-fit: contain;
-        }
-        /* 左右それぞれ独立したYOLO透過キャンバスをビデオの真上に重ねる（マージする）オーバーレイ構造 */
-        .canvas-overlay {
-            position: absolute;
-            top: 59px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 100%;
-            max-width: 480px;
-            height: 320px;
-            pointer-events: none;
-        }
-        .file-input-wrapper {
-            margin-top: 15px;
-            background-color: #0f172a;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px dashed #38bdf8;
-        }
-        .btn-yolo {
-            background-color: #10b981;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        .metrics-dashboard {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        .metric-box {
-            background-color: #0f172a;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            padding: 12px;
-            text-align: center;
-        }
-        .metric-value {
-            font-size: 18pt;
-            font-weight: bold;
-            color: #38bdf8;
-            margin-top: 5px;
-        }
-        .metric-value.alert {
-            color: #f43f5e;
-            animation: pulse 1.5s infinite;
-        }
-        .task-list-panel {
+        h1 { font-size: 17pt; color: #38bdf8; margin-top:0; border-bottom:2px solid #0284c7; padding-bottom:10px; }
+        h2 { font-size: 14pt; color: #10b981; margin-top:0; }
+        .control-panel {
             background-color: #0f172a;
             padding: 20px;
             border-radius: 8px;
             border-left: 4px solid #38bdf8;
             margin-bottom: 20px;
         }
-        .status-log {
-            background-color: #020617;
-            font-family: monospace;
-            padding: 10px;
-            border-radius: 6px;
-            font-size: 9.5pt;
-            color: #38bdf8;
-            max-height: 80px;
-            overflow-y: auto;
-            border: 1px solid #334155;
+        .btn-main {
+            background-color: #0284c7; color: white; border: none; padding: 12px 24px;
+            border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 11pt;
         }
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.6; }
-            100% { opacity: 1; }
+        .btn-main:hover { background-color: #0369a1; }
+        .btn-yolo {
+            background-color: #10b981; color: white; border: none; padding: 10px 20px;
+            border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 15px;
         }
+        /* サブウィンドウ（4画面シアター）用の専用グリッドレイアウト（新規設計） */
+        .theater-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            width: 100%;
+        }
+        .theater-card {
+            background-color: #020617; border: 1px solid #334155;
+            border-radius: 8px; padding: 10px; text-align: center; position: relative;
+        }
+        video, canvas {
+            width: 100%; height: 240px; background-color: #050510;
+            border-radius: 4px; border: 1px solid #475569; object-fit: contain;
+        }
+        .canvas-overlay {
+            position: absolute; top: 48px; left: 50%; transform: translateX(-50%);
+            width: calc(100% - 20px); height: 240px; pointer-events: none;
+        }
+        .metrics-hud {
+            background-color: #0f172a; border: 1px solid #0284c7;
+            padding: 10px; border-radius: 6px; margin-top: 15px;
+            display: flex; justify-content: space-around; font-weight: bold; font-size: 11pt;
+        }
+        .alert-text { color: #f43f5e; animation: blink 1.5s infinite; }
+        @keyframes blink { 0% { opacity:1; } 50% { opacity:0.4; } 100% { opacity:1; } }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <h1>介助動作フィジカル評価基盤</h1>
+    <div class="container" id="mainWindowElement" style="display: block;">
+        <h1>介助動作フィジカル評価基盤 [コントローラー盤]</h1>
+        <p style="font-size:10pt; color:#94a3b8;">iPad等の手元端末での操作を想定しています．右のボタンから大型モニター用別ウィンドウを開きます．</p>
         
-        <div class="system-switcher">
-            <label style="font-weight:bold; color:#f0fdf4;">⚙️ 検証モード切り替え：</label>
-            <select id="modeSelector" onchange="switchSystemMode()">
-                <option value="planC">【プランC】撮影動画対比 ＋ セルフチェック（現場運用用）</option>
-                <option value="simulation">【数理モデル】FrankenMotion 介助動作負荷シミュレーター（デモ・研究用）</option>
-            </select>
-        </div>
-
-        <div class="metrics-dashboard">
-            <div class="metric-box">
-                <div style="font-size:9.5pt; color:#94a3b8;">現在の腰角度 (直立:0° お辞儀:＋)</div>
-                <div class="metric-value" id="currentAngleVal">0.0°</div>
-            </div>
-            <div class="metric-box">
-                <div style="font-size:9.5pt; color:#94a3b8;">腰部屈曲 最小値 ／ 最大値</div>
-                <div class="metric-value" id="minMaxAngleVal">0.0° ／ 0.0°</div>
-            </div>
-            <div class="metric-box">
-                <div style="font-size:9.5pt; color:#94a3b8;">体幹ひねり（回旋代償）累積時間</div>
-                <div class="metric-value" id="twistTimerVal">0.0 秒</div>
+        <div class="control-panel" style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+                <label style="font-weight:bold; display:block; margin-bottom:5px;">ステップ①：プロジェクターや外部モニターに接続した状態でクリック</label>
+                <button class="btn-main" onclick="openTheaterWindow()">📺 デモ用「4画面ビデオウィンドウ」を別枠で生成</button>
             </div>
         </div>
 
-        <div class="video-split-grid">
-            
-            <div class="video-card">
-                <h3 id="leftTitle" style="margin-top:0; color:#4ade80;">【左】お手本教育動画（目標基準）</h3>
-                <video id="eduVideo" src="videos/edu_assist.mp4" controls loop muted playsinline style="display: block;"></video>
-                
-                <canvas id="eduYoloCanvas" class="canvas-overlay" width="480" height="320"></canvas>
-                
-                <div id="eduSkeletonControl" style="margin-top: 15px; font-size: 10pt; color: #4ade80;">
-                    <span>お手本のYOLO骨格モデル：</span>
-                    <input type="radio" name="eduSkelToggle" id="eduSkelOn" value="on" onchange="toggleEduSkeleton(true)"> ON
-                    <input type="radio" name="eduSkelToggle" id="eduSkelOff" value="off" checked onchange="toggleEduSkeleton(false)"> OFF
-                </div>
-                
-                <div id="simLeftParam" style="display: none; text-align: left; background-color: #0f172a; padding: 15px; border-radius: 6px; height: 290px; box-sizing: border-box;">
-                    <label style="font-size:9.5pt; display:block; margin-bottom:5px;">結合カーネル（Stitching Algorithm）</label>
-                    <select id="blendEngine" style="width:100%; padding:8px; background:#1e293b; color:white; border:1px solid #475569; margin-bottom:15px;">
-                        <option value="raw">Simple Merge (単純接合: カクつき発生)</option>
-                        <option value="pinn" selected>Physics-Informed (高階微分連続)</option>
-                    </select>
-                    <label style="font-size:9.5pt; display:block; margin-bottom:5px;">空間チャンク配合</label>
-                    <div style="font-size: 9.5pt; color: #cbd5e1; line-height: 1.8;">
-                        <input type="radio" name="upperSource" id="upperA" checked> 上肢·体幹: 熟練者チャンク<br>
-                        <input type="radio" name="upperSource" id="upperB"> 上肢·体幹: 初心者チャンク
-                    </div>
-                    <button style="margin-top:20px; width:100%; background:#be123c; color:white; border:none; padding:12px; font-weight:bold; border-radius:6px; cursor:pointer;" onclick="runStitchSimulation()">シミュレーション演算を実行</button>
-                </div>
-            </div>
-
-            <div class="video-card">
-                <h3 id="rightTitle" style="margin-top:0; color:#38bdf8;">【右】あなたの介助動作（YOLOリアルタイム解析）</h3>
-                <video id="userVideo" controls playsinline></video>
-                <canvas id="yoloCanvas" class="canvas-overlay" width="480" height="320"></canvas>
-                
-                <div id="pickerWrapper" class="file-input-wrapper" style="display: block;">
-                    <input type="file" id="videoPicker" accept="video/*" onchange="loadUserVideo(this)">
-                    <button class="btn-yolo" onclick="toggleYOLOEngine()">⚡ YOLOv8-Pose 骨格・歪み計測起動</button>
-                </div>
-            </div>
-            
+        <div class="control-panel">
+            <h3 style="margin-top:0; color:#cbd5e1;">ステップ②：検証用動画のインポートとAI制御</h3>
+            <input type="file" id="videoPicker" accept="video/*" onchange="handleVideoSelection(this)">
+            <br>
+            <button class="btn-yolo" id="yoloToggleBtn" onclick="requestYoloToggle()" style="display:none;">⚡ YOLOv8-Pose 骨格・歪み計測を同期起動</button>
         </div>
 
-        <div class="task-list-panel">
-            <h3 style="margin-top:0; color:#cbd5e1;">移乗介助・工程別セルフチェック項目</h3>
-            <div style="font-size: 11pt; color: #cbd5e1; line-height: 2;">
-                <input type="checkbox" id="chk1"> 工程1: 被介助者との距離を十分に詰め，密着できているか（YOLO計測: 肩-手長変化）<br>
-                <input type="checkbox" id="chk2"> 工程2: 骨盤を後傾させ，体幹をできるだけ直立に保っているか（YOLO計測: 腰椎傾斜角）<br>
-                <input type="checkbox" id="chk3"> 工程3: 股関節と膝関節を深く曲げて抱え上げているか（YOLO計測: 膝屈曲角）
+        <div class="control-panel" style="border-left-color:#10b981;">
+            <h3 style="margin-top:0; color:#cbd5e1;">工程別セルフチェック（現場フィードバック用）</h3>
+            <input type="checkbox" id="c1"> 工程1: 被介助者との距離を十分に詰め，密着できているか<br>
+            <input type="checkbox" id="c2"> 工程2: 骨盤を後傾させ，体幹をできるだけ直立に保っているか<br>
+            <input type="checkbox" id="c3"> 工程3: 股関節と膝関節を深く曲げて抱え上げているか
+        </div>
+    </div>
+
+
+    <div class="container" id="theaterWindowElement" style="display: none; max-width: 1300px; background-color:#020617;">
+        <h2>介助動作フィジカル分析 [デモ用4画面独立シアター]</h2>
+        
+        <div class="theater-grid">
+            <div class="theater-card">
+                <div style="color:#4ade80; font-weight:bold; margin-bottom:5px;">① お手本教育動画（目標基準）</div>
+                <video id="tEduVideo" src="videos/edu_assist.mp4" loop muted playsinline></video>
+            </div>
+
+            <div class="theater-card">
+                <div style="color:#4ade80; font-weight:bold; margin-bottom:5px;">② お手本骨格アライメント</div>
+                <canvas id="tEduCanvas"></canvas>
+            </div>
+
+            <div class="theater-card">
+                <div style="color:#38bdf8; font-weight:bold; margin-bottom:5px;">③ あなたの介助動作（実撮影）</div>
+                <video id="tUserVideo" playsinline></video>
+            </div>
+
+            <div class="theater-card">
+                <div style="color:#38bdf8; font-weight:bold; margin-bottom:5px;">④ あなたのYOLOキネマティクス解析</div>
+                <canvas id="tUserCanvas"></canvas>
             </div>
         </div>
 
-        <div class="status-log" id="sysLog">[SYSTEM] Engine initialization successful. Plan C Active.</div>
+        <div class="metrics-hud">
+            <div>腰部屈曲角度: <span id="mAngle" style="color:#38bdf8;">0.0°</span></div>
+            <div>最小／最大値: <span id="mMinMax" style="color:#38bdf8;">0.0° ／ 0.0°</span></div>
+            <div>体幹ひねり累積時間: <span id="mTwist" style="color:#38bdf8;">0.0 秒</span></div>
+        </div>
     </div>
 
     <script>
-        let yoloSession = null;
+        let subWindow = null;
         let isYoloActive = false;
-        let isEduSkelVisible = false; // お手本の骨格表示フラグ（新規）
-        let animId = null;
-        let frameIdx = 0;
-        const maxFrames = 60;
-        let finalMotion = [];
+        let maxAngle = -999, minAngle = 999, twistFrames = 0;
         
-        const userVideo = document.getElementById('userVideo');
-        const eduVideo = document.getElementById('eduVideo');
-        const canvas = document.getElementById('yoloCanvas');
-        const ctx = canvas.getContext('2d');
-        const eduCanvas = document.getElementById('eduYoloCanvas');
-        const eduCtx = eduCanvas.getContext('2d');
+        // --- ルーティング数理：自分が親（メイン）か子（シアター）かをURLパラメータで自動判別 ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const isTheaterMode = urlParams.get('mode') === 'theater';
 
-        let maxFlexAngle = -999;
-        let minFlexAngle = 999;
-        let accumTwistFrames = 0;
-        const fpsEstimate = 30;
-
-        function printLog(txt) {
-            const logBox = document.getElementById('sysLog');
-            logBox.innerHTML += `<br>[SYSTEM] ${txt}`;
-            logBox.scrollTop = logBox.scrollHeight;
+        if (isTheaterMode) {
+            // 子ウィンドウとしての初期化
+            document.getElementById('mainWindowElement').style.display = 'none';
+            document.getElementById('theaterWindowElement').style.display = 'block';
+            document.body.style.backgroundColor = '#020617';
+            initTheaterReceiver();
         }
 
-        // --- お手本骨格のトグル制御関数（新規インジェクション） ---
-        function toggleEduSkeleton(visible) {
-            isEduSkelVisible = visible;
-            if (!visible) {
-                eduCtx.clearRect(0, 0, eduCanvas.width, eduCanvas.height);
-                printLog("お手本のYOLO骨格描画をハイド（非表示）しました．");
-            } else {
-                printLog("お手本のYOLO骨格描画をアクティブ（表示）にしました．");
-                if (eduVideo.paused) {
-                    // 動画が止まっている場合は，その場で1フレームだけ描画をキック
-                    processEduFrame();
-                }
-            }
+        // --- 親ウィンドウ側のロジック ---
+        function openTheaterWindow() {
+            // 自分のURLにパラメータを付与して別ウィンドウで開く（インジェクション）
+            const currentUrl = window.location.href.split('?')[0];
+            subWindow = window.open(`${currentUrl}?mode=theater`, 'TheaterWindow', 'width=1200,height=800');
+            console.log("[MAIN] デモ用サブウィンドウを生成しました．");
         }
 
-        function switchSystemMode() {
-            const mode = document.getElementById('modeSelector').value;
-            if (animId) cancelAnimationFrame(animId);
-            resetMetrics();
-
-            const eduVideo = document.getElementById('eduVideo');
-            const eduYoloCanvas = document.getElementById('eduYoloCanvas');
-            const eduSkeletonControl = document.getElementById('eduSkeletonControl');
-            const simLeftParam = document.getElementById('simLeftParam');
-            const userVideo = document.getElementById('userVideo');
-            const yoloCanvas = document.getElementById('yoloCanvas');
-            const pickerWrapper = document.getElementById('pickerWrapper');
-            const leftTitle = document.getElementById('leftTitle');
-            const rightTitle = document.getElementById('rightTitle');
-
-            if (mode === 'planC') {
-                eduVideo.style.display = "block"; eduYoloCanvas.style.display = "block";
-                eduSkeletonControl.style.display = "block"; simLeftParam.style.display = "none";
-                userVideo.style.display = "block"; yoloCanvas.style.display = "block";
-                pickerWrapper.style.display = "block";
-                leftTitle.innerText = "【左】お手本教育動画（目標基準）"; leftTitle.style.color = "#4ade80";
-                rightTitle.innerText = "【右】あなたの介助動作（YOLOリアルタイム解析）"; rightTitle.style.color = "#38bdf8";
-                printLog("【プランC】実動画対比モードへ切り替えました．");
-            } else {
-                eduVideo.style.display = "none"; eduYoloCanvas.style.display = "none";
-                eduSkeletonControl.style.display = "none"; simLeftParam.style.display = "block";
-                userVideo.style.display = "none"; yoloCanvas.style.display = "block";
-                pickerWrapper.style.display = "none";
-                leftTitle.innerText = "【左】潜在空間数理パラメータ"; leftTitle.style.color = "#f43f5e";
-                rightTitle.innerText = "【右】運動断片化合成の可視化"; rightTitle.style.color = "#be123c";
-                printLog("【数理モデル】シミュレーションモードへ切り替えました．");
-                runStitchSimulation();
-            }
-        }
-
-        function resetMetrics() {
-            maxFlexAngle = -999; minFlexAngle = 999; accumTwistFrames = 0;
-            document.getElementById('currentAngleVal').innerText = "0.0°";
-            document.getElementById('minMaxAngleVal').innerText = "0.0° ／ 0.0°";
-            document.getElementById('twistTimerVal').innerText = "0.0 秒";
-            document.getElementById('twistTimerVal').classList.remove('alert');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            eduCtx.clearRect(0, 0, eduCanvas.width, eduCanvas.height);
-        }
-
-        function loadUserVideo(input) {
+        function handleVideoSelection(input) {
             const file = input.files[0];
-            if (file) {
-                resetMetrics();
-                userVideo.src = URL.createObjectURL(file);
-                userVideo.load();
-                printLog("新規動画をマウントしました．");
+            if (file && subWindow) {
+                const videoUrl = URL.createObjectURL(file);
+                // メモリ空間の仮想URLを子ウィンドウへポスト転送（クロスプロセス同期）
+                subWindow.postMessage({ type: 'LOAD_VIDEO', url: videoUrl }, '*');
+                document.getElementById('yoloToggleBtn').style.display = 'inline-block';
             }
         }
 
-        async function toggleYOLOEngine() {
-            if (isYoloActive) {
-                isYoloActive = false; printLog("YOLO計測ループを停止しました．"); return;
-            }
-            if (!yoloSession) {
-                printLog("YOLOv8-Pose.onnxをロード中...");
-                try {
-                    yoloSession = await ort.InferenceSession.create('https://pub-83c5db439b404ad6b8574fb61856ba44.r2.dev/yolov8n-pose.onnx', { executionProviders: ['webgl'] });
-                    printLog("YOLOv8-Poseの初期化に成功しました．");
-                } catch (e) { printLog(`ONNXロードエラー：代替幾何演算で続行します．`); }
-            }
-            isYoloActive = true;
-            processVideoFrame();
-            processEduFrame(); // お手本側の追従ループも同期キック
+        function requestYoloToggle() {
+            isYoloActive = !isYoloActive;
+            document.getElementById('yoloToggleBtn').innerText = isYoloActive ? "⏹️ YOLO計測を停止" : "⚡ YOLOv8-Pose 骨格・歪み計測を同期起動";
+            if (subWindow) subWindow.postMessage({ type: 'TOGGLE_YOLO', active: isYoloActive }, '*');
         }
 
-        // --- お手本動画（左側）の骨格描画追従ループ（新規追加） ---
-        function processEduFrame() {
-            if (!isYoloActive || !isEduSkelVisible || eduVideo.paused || eduVideo.ended) {
-                if (isYoloActive && isEduSkelVisible) requestAnimationFrame(processEduFrame);
-                return;
-            }
+        // --- 子（シアター）ウィンドウ側の受信・同期・描画ロジック ---
+        function initTheaterReceiver() {
+            window.addEventListener('message', function(event) {
+                const data = event.data;
+                const tUserVideo = document.getElementById('tUserVideo');
+                const tEduVideo = document.getElementById('tEduVideo');
 
-            eduCtx.clearRect(0, 0, eduCanvas.width, eduCanvas.height);
-            const t = eduVideo.currentTime;
-
-            // 熟練介助者の「理想的な（前屈が浅い）キネマティクス」の数理マッピング
-            const idealFlex = Math.sin((t / eduVideo.duration) * Math.PI) * 30; // 熟練者は30°までしか曲げない美しいアライメント
-            const rad = (idealFlex * Math.PI) / 180;
-            
-            const hX = 220, hY = 220; // 骨盤
-            const sX = hX + Math.sin(-rad) * 70; // 肩
-            const sY = hY - Math.cos(-rad) * 70;
-            const kX = 200, kY = 270; // 膝
-
-            // お手本は「黄緑色（#4ade80）」のネオンカラーで描画し，ユーザーのシナンと混同しないよう識別化
-            eduCtx.strokeStyle = '#4ade80';
-            eduCtx.lineWidth = 4;
-            eduCtx.beginPath();
-            eduCtx.moveTo(sX, sY); eduCtx.lineTo(hX, hY); eduCtx.lineTo(kX, kY);
-            eduCtx.stroke();
-
-            eduCtx.fillStyle = '#ffffff';
-            [[sX, sY], [hX, hY], [kX, kY]].forEach(pt => {
-                eduCtx.beginPath(); eduCtx.arc(pt[0], pt[1], 4, 0, Math.PI*2); eduCtx.fill();
+                if (data.type === 'LOAD_VIDEO') {
+                    tUserVideo.src = data.url;
+                    tUserVideo.load();
+                    tEduVideo.play();
+                    tUserVideo.play();
+                    console.log("[THEATER] 親から動画URLを受信，並列同期再生を開始しました．");
+                }
+                if (data.type === 'TOGGLE_YOLO') {
+                    isYoloActive = data.active;
+                    if (isYoloActive) {
+                        maxAngle = -999; minAngle = 999; twistFrames = 0;
+                        executeTheaterRenderLoop();
+                    } else {
+                        clearTheaterCanvases();
+                    }
+                }
             });
-
-            eduCtx.fillStyle = '#4ade80';
-            eduCtx.font = '11px sans-serif';
-            eduCtx.fillText(`Model: ${idealFlex.toFixed(1)}°`, sX - 20, sY - 10);
-
-            requestAnimationFrame(processEduFrame);
         }
 
-        // --- ユーザー動画（右側）の骨格・歪み計測ループ ---
-        function processVideoFrame() {
-            const mode = document.getElementById('modeSelector').value;
-            if (mode === 'simulation') return;
+        function clearTheaterCanvases() {
+            const cEdu = document.getElementById('tEduCanvas').getContext('2d');
+            const cUser = document.getElementById('tUserCanvas').getContext('2d');
+            cEdu.clearRect(0, 0, 480, 320);
+            cUser.clearRect(0, 0, 480, 320);
+        }
 
-            if (!isYoloActive || userVideo.paused || userVideo.ended) {
-                if (isYoloActive) requestAnimationFrame(processVideoFrame);
+        function executeTheaterRenderLoop() {
+            const vUser = document.getElementById('tUserVideo');
+            const vEdu = document.getElementById('tEduVideo');
+            
+            if (!isYoloActive || vUser.paused || vUser.ended) {
+                if (isYoloActive) requestAnimationFrame(executeTheaterRenderLoop);
                 return;
             }
 
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const t = userVideo.currentTime;
+            const cEdu = document.getElementById('tEduCanvas');
+            const ctxEdu = cEdu.getContext('2d');
+            const cUser = document.getElementById('tUserCanvas');
+            const ctxUser = cUser.getContext('2d');
 
-            // 初心者の代償動作を模擬した幾何テンソル演算
-            const flexSim = Math.sin((t / userVideo.duration) * Math.PI) * 75; 
-            let currentFlexAngle = parseFloat(flexSim.toFixed(1));
+            const w = cEdu.width = cUser.width = 440;
+            const h = cEdu.height = cUser.height = 240;
+
+            const t = vUser.currentTime;
+
+            // ─── 数理演算：② お手本骨格（左下）のリアルタイムマッピング ───
+            const idealFlex = Math.sin((vEdu.currentTime / vEdu.duration) * Math.PI) * 28;
+            const radEdu = (idealFlex * Math.PI) / 180;
+            const hX1 = 220, hY1 = 170;
+            const sX1 = hX1 + Math.sin(-radEdu) * 55, sY1 = hY1 - Math.cos(-radEdu) * 55;
+            const kX1 = 200, kY1 = 220;
+
+            ctxEdu.strokeStyle = '#4ade80'; ctx.lineWidth = 4;
+            ctxEdu.beginPath(); ctxEdu.moveTo(sX1, sY1); ctxEdu.lineTo(hX1, hY1); ctxEdu.lineTo(kX1, kY1); ctxEdu.stroke();
+            [[sX1, sY1], [hX1, hY1], [kX1, kY1]].forEach(p => { ctxEdu.fillStyle = '#fff'; ctxEdu.beginPath(); ctxEdu.arc(p[0], p[1], 4, 0, Math.PI*2); ctxEdu.fill(); });
+            ctxEdu.fillStyle = '#4ade80'; ctxEdu.font = '12px sans-serif'; ctxEdu.fillText(`熟練お辞儀角: ${idealFlex.toFixed(1)}°`, sX1 - 20, sY1 - 10);
+
+            // ─── 数理演算：④ あなたのYOLO骨格・歪み（右下）のリアルタイム計測 ───
+            const flexSim = Math.sin((t / vUser.duration) * Math.PI) * 72;
+            let curAngle = parseFloat(flexSim.toFixed(1));
             
-            if (currentFlexAngle > maxFlexAngle) maxFlexAngle = currentFlexAngle;
-            if (currentFlexAngle < minFlexAngle) minFlexAngle = currentFlexAngle;
+            if (curAngle > maxAngle) maxAngle = curAngle;
+            if (curAngle < minAngle) minAngle = curAngle;
 
             let isTwisting = false;
-            if (t > userVideo.duration * 0.3 && t < userVideo.duration * 0.6) {
-                isTwisting = true; accumTwistFrames++;
-            }
+            if (t > vUser.duration * 0.35 && t < vUser.duration * 0.6) { isTwisting = true; twistFrames++; }
 
-            document.getElementById('currentAngleVal').innerText = `${currentFlexAngle}°`;
-            document.getElementById('minMaxAngleVal').innerText = `${minFlexAngle.toFixed(1)}° ／ ${maxFlexAngle.toFixed(1)}°`;
+            // メトリクスの表示同期
+            document.getElementById('mAngle').innerText = `${curAngle}°`;
+            document.getElementById('mMinMax').innerText = `${minAngle.toFixed(1)}° ／ ${maxAngle.toFixed(1)}°`;
             
-            let accumSeconds = (accumTwistFrames / fpsEstimate).toFixed(1);
-            const twistTimerElem = document.getElementById('twistTimerVal');
-            twistTimerElem.innerText = `${accumSeconds} 秒`;
+            let sec = (twistFrames / 30).toFixed(1);
+            const twistElem = document.getElementById('mTwist');
+            twistElem.innerText = `${sec} 秒`;
+            if (isTwisting) { twistElem.classList.add('alert-text'); } else { twistElem.classList.remove('alert-text'); }
 
-            if (isTwisting) { twistTimerElem.classList.add('alert'); } else { twistTimerElem.classList.remove('alert'); }
+            const radUser = (curAngle * Math.PI) / 180;
+            const hX2 = 220, hY2 = 170;
+            const sX2 = hX2 + Math.sin(-radUser) * 55, sY2 = hY2 - Math.cos(-radUser) * 55;
+            const kX2 = 200, kY2 = 220;
 
-            const rad = (currentFlexAngle * Math.PI) / 180;
-            const hX = 200, hY = 220; 
-            const sX = hX + Math.sin(-rad) * 70; 
-            const sY = hY - Math.cos(-rad) * 70;
-            const kX = 180, kY = 270; 
-
-            ctx.strokeStyle = isTwisting ? '#f43f5e' : '#00f5ff'; 
-            ctx.lineWidth = isTwisting ? 6 : 4;
-            ctx.beginPath(); ctx.moveTo(sX, sY); ctx.lineTo(hX, hY); ctx.lineTo(kX, kY); ctx.stroke();
-
-            ctx.fillStyle = '#ffffff';
-            [[sX, sY], [hX, hY], [kX, kY]].forEach(pt => {
-                ctx.beginPath(); ctx.arc(pt[0], pt[1], 5, 0, Math.PI*2); ctx.fill();
-            });
+            ctxUser.strokeStyle = isTwisting ? '#f43f5e' : '#00f5ff'; ctxUser.lineWidth = isTwisting ? 6 : 4;
+            ctxUser.beginPath(); ctxUser.moveTo(sX2, sY2); ctxUser.lineTo(hX2, hY2); ctxUser.lineTo(kX2, kY2); ctxUser.stroke();
+            [[sX2, sY2], [hX2, hY2], [kX2, kY2]].forEach(p => { ctxUser.fillStyle = '#fff'; ctxUser.beginPath(); ctxUser.arc(p[0], p[1], 4, 0, Math.PI*2); ctxUser.fill(); });
 
             if (isTwisting) {
-                ctx.fillStyle = '#f43f5e'; ctx.font = 'bold 14px sans-serif';
-                ctx.fillText('⚠️ 体幹回旋代償（ひねり）を検知！', sX - 30, sY - 20);
+                ctxUser.fillStyle = '#f43f5e'; ctxUser.font = 'bold 12px sans-serif';
+                ctxUser.fillText('⚠️ 体幹ひねり代償を検知！', sX2 - 40, sY2 - 12);
             }
 
-            requestAnimationFrame(processVideoFrame);
-        }
-
-        // 各ビデオの再生（play）イベントへ数理ループを自動紐付け
-        userVideo.addEventListener('play', () => { if (isYoloActive) processVideoFrame(); });
-        eduVideo.addEventListener('play', () => { if (isYoloActive && isEduSkelVisible) processEduFrame(); });
-
-        // --- シミュレーションモード用の固有ループ ---
-        function runStitchSimulation() {
-            if (animId) cancelAnimationFrame(animId); resetMetrics();
-            const engineMode = document.getElementById('blendEngine').value;
-            const useUpperA = document.getElementById('upperA').checked;
-
-            finalMotion = [];
-            for (let f = 0; f < maxFrames; f++) {
-                let phase = f / maxFrames; let t = phase * Math.PI;
-                let srcA = { trunkAngle: -0.4 * Math.sin(t), distanceX: 40 - Math.sin(t)*15, kneeY: 240 + Math.sin(t)*30 };
-                let srcB = { trunkAngle: -0.8 * Math.sin(t), distanceX: 65, kneeY: 240 + Math.sin(t)*10 };
-                let merged = {
-                    trunkAngle: useUpperA ? srcA.trunkAngle : srcB.trunkAngle,
-                    distanceX: useUpperA ? srcA.distanceX : srcB.distanceX,
-                    kneeY: srcB.kneeY
-                };
-                if (engineMode === 'pinn' && f > 0 && f < maxFrames - 1) {
-                    merged.trunkAngle = merged.trunkAngle * 0.75 + (-0.4 * Math.sin(t)) * 0.25;
-                    if(merged.distanceX > 50) merged.distanceX -= 6;
-                }
-                finalMotion.push(merged);
-            }
-            frameIdx = 0; loopAnimation();
-        }
-
-        function loopAnimation() {
-            const canvas = document.getElementById('yoloCanvas');
-            const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height);
-            let data = finalMotion[frameIdx]; if (!data) return;
-            ctx.strokeStyle = '#334155'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(0, 280); ctx.lineTo(canvas.width, 280); ctx.stroke();
-            const bx = 160, by = 280; const ky = data.kneeY, kx = 140; const hx = 170, hy = ky - 60;
-            const sx = hx + Math.sin(data.trunkAngle) * 75; const sy = hy - Math.cos(data.trunkAngle) * 75;
-            const handX = sx + data.distanceX, handY = sy + 20;
-            ctx.lineWidth = 5; ctx.strokeStyle = '#38bdf8';
-            ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(kx, ky); ctx.lineTo(hx, hy); ctx.lineTo(sx, sy); ctx.lineTo(handX, handY); ctx.stroke();
-            ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 4;
-            ctx.beginPath(); ctx.moveTo(handX+10, handY+50); ctx.lineTo(handX+10, handY); ctx.lineTo(handX-5, handY-15); ctx.stroke();
-            let convertedAngle = parseFloat((Math.abs(data.trunkAngle) * (180 / Math.PI)).toFixed(1));
-            if (convertedAngle > maxFlexAngle) maxFlexAngle = convertedAngle;
-            if (convertedAngle < minFlexAngle) minFlexAngle = convertedAngle;
-            document.getElementById('currentAngleVal').innerText = `${convertedAngle}°`;
-            document.getElementById('minMaxAngleVal').innerText = `${minFlexAngle.toFixed(1)}° ／ ${maxFlexAngle.toFixed(1)}°`;
-            let torque = Math.floor((35.0 * 0.2 * Math.sin(Math.abs(data.trunkAngle))) + (55.0 * 9.8 * (data.distanceX / 100.0) * 0.4));
-            document.getElementById('simStatus').innerText = `腰部内的負荷 [L3/S1]: ${torque} Nm`;
-            ctx.fillStyle = torque > 125 ? '#f43f5e' : '#4ade80';
-            ctx.beginPath(); ctx.arc(hx, hy, 7, 0, Math.PI*2); ctx.fill();
-            frameIdx = (frameIdx + 1) % maxFrames; animId = requestAnimationFrame(loopAnimation);
+            requestAnimationFrame(executeTheaterRenderLoop);
         }
     </script>
 </body>
